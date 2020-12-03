@@ -2,7 +2,9 @@ pico-8 cartridge // http://www.pico-8.com
 version 29
 __lua__
 
---- vars
+--- thanks
+--- @2darray
+
 
 --
 -- game
@@ -44,6 +46,7 @@ function create_player ()
   p.w = 8
   p.h = 8
 
+  p.speed = .8
   p.vx = 0
   p.vy = 0
   p.vmax = 3
@@ -66,11 +69,23 @@ beat = 0
 function player_move()
 
   -- player actions
-  if( btn(0) ) then player.vx -= 1 end
-  if( btn(1) ) then player.vx += 1 end
-  if( btn(2) ) then player.vy -= 1 end
-  if( btn(3) ) then player.vy += 1 end
+  i = {x = 0, y = 0} -- input
+  if( btn(0) ) then i.x = -1 end
+  if( btn(1) ) then i.x = 1 end
+  if( btn(2) ) then i.y = -1 end
+  if( btn(3) ) then i.y = 1 end
 
+  if (abs(i.x) + abs(i.y) > 1) then
+    -- normalize diagonal moves
+    dist = sqrt(i.x*i.x+i.y*i.y)
+    i.x /= dist
+    i.y /= dist
+  end
+
+
+  -- velocity
+  player.vx += i.x * player.speed
+  player.vy += i.y * player.speed
 
   if (abs(player.vx) < player.vths) player.vx = 0
   if (abs(player.vy) < player.vths) player.vy = 0
