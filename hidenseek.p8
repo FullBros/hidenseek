@@ -27,7 +27,7 @@ function _draw()
   player_display()
   vision()
 
-  draw_walls()
+  --draw_walls()
   --draw_view()
 
 
@@ -388,10 +388,17 @@ function init_shadow_table()
 end
 
 
+-- version de among us
+function shadow_line(y, xstart, xend)
+   poke(0x5f5e, 0xfe)
+   line(xstart+cam.x,y+cam.y, xend+cam.x, y+cam.y, 0)
+   poke(0x5f5e, 0xff)
+end
+
 --
 -- blend shadow in screen memory
 --
-function shadow_line (y, xstart, xend)
+function mem_shadow_line (y, xstart, xend)
   local lutaddr=0x4300
   local laddr=lutaddr
   local yaddr=0x6000+shl(y,6)
@@ -442,15 +449,48 @@ function vision ()
       shadow_line(y, 0, 127)
 
     else
+      -- circle view
       d = (py - y)/64
       v = pv/64
       x = sqrt(v*v - d*d)*64
       shadow_line(y, 0, px-x)
       shadow_line(y, px+x, 127)
     end
+  end
+
+
+  -- wall shadows
+  for w in all(walls) do
+
+    local points = {
+      w.p1,
+      w.p2,
+    }
+
+
+    for pt in all({w.p2, w.p1}) do
+      --if dist( p(player.x, player.y), pt) < player.vision then
+        --line(player.x+4, player.y+4, pt.x, pt.y, 10) -- line to edge
+
+        -- thales ftw
+        d = dist(p(player.x+4, player.y+4), p(pt.x, pt.y))
+        dx = (pt.x - (player.x+4))
+        dy = (pt.y - (player.y+4))
+
+        td = player.vision*2
+        tx = (player.x+4) + dx*td/d
+        ty = (player.y+4) + dy*td/d
+
+        add(points, p(flr(tx), flr(ty)))
+        --line(pt.x, pt.y, tx, ty, 8) -- shadow
+      --end
+    end
 
 
 
+      poke(0x5f5e, 0xfe)
+      polyfill(points, 0)
+      poke(0x5f5e, 0xff)
 
   end
 end
