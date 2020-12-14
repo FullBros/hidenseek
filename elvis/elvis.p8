@@ -22,42 +22,50 @@ function _init()
   poke(0x5f43, 0b1111) --lowpass
 
   pal(11,128+11,1) --use lime green
-  music(0) -- go music!
 
+  -- new hero
+  elvis = player:create(48,80)
+
+  aliens = {}
+  add(aliens, alien:create(100, 20))
+  add(aliens, alien:create(10, 20))
+
+
+  music(0) -- go music!
 end
 
 function _update()
 
   tick = (tick + 1) % animate_each
 
-  player.animation = animation.idle
+  elvis.animation = elvis.animations.idle
 
   if btn(4) then
-    player.animation = animation.ready
+    elvis.animation = elvis.animations.ready
 
-    if (btn(0) or btn(1)) player.animation = animation.right
-    if (btn(2)) player.animation = animation.up
+    if (btn(0) or btn(1)) elvis.animation = elvis.animations.right
+    if (btn(2)) elvis.animation = elvis.animations.up
 
     --playing diagonal
     if (btn(2) and btn(0)) or
        (btn(2) and btn(1)) then
-        player.animation = animation.diagonal
+        elvis.animation = elvis.animations.diagonal
     end
 
 
   else
 
-    if (btn(0) or btn(1)) player.animation = animation.walk
+    if (btn(0) or btn(1)) elvis.animation = elvis.animations.walk
 
     --moves
-    if (btn(0)) player.x -= 1
-    if (btn(1)) player.x += 1
+    if (btn(0)) elvis.x -= elvis.speed
+    if (btn(1)) elvis.x += elvis.speed
   end
 
 
   -- flip sprite
-  if (btn(0)) player.flip = true
-  if (btn(1)) player.flip = false
+  if (btn(0)) elvis.flip = true
+  if (btn(1)) elvis.flip = false
 
   play_music()
 
@@ -76,7 +84,8 @@ function _draw()
 
   draw_title()
 
-  spr(animate(player.animation), player.x, player.y, 2,2, player.flip)
+
+  elvis:draw()
 
   for a in all (aliens) do
     a:draw()
@@ -140,12 +149,12 @@ function play_music ()
 
    local hard
 
-  if (player.animation == animation.right or
-      player.animation == animation.diagonal or
-      player.animation == animation.up
+  if (elvis.animation == elvis.animations.right or
+      elvis.animation == elvis.animations.diagonal or
+      elvis.animation == elvis.animations.up
     ) then
 
-    hard = (player.animation == animation.up)
+    hard = (elvis.animation == elvis.animations.up)
 
     --if (guitar.playing == false or hard == 1) then
       -- guitarpart = stat(16)+8
@@ -176,10 +185,65 @@ end
 --
 
 player = {}
-player.x = 48
-player.y = 80
-player.flip = false
-player.animation = {}
+player.__index = player
+
+function player:create (x, y)
+
+  p = {}
+  setmetatable(p, player)
+
+  p.x = x
+  p.y = y
+  p.flip = false
+  player.animation = {}
+  player.speed = 2
+
+  p.first = 64 --first position in sprite sheet
+  p.animations = {
+    idle = {0,1},
+    walk = {2,3,4,5,6,4},
+    ready = {7,8},
+    right = {9,10,11},
+    diagonal = {12,13,14},
+    up = {15,16,17},
+  }
+
+  p.animation = p.animations.idle
+  p.last_animation = {}
+  p.sprite = 0
+  p.step = 0
+
+  return p
+end
+
+
+function player:animate()
+
+  local sprite
+
+  if (self.animation != self.last_animation) then
+    self.step = 1
+    self.last_animation = self.animation
+  end
+
+  sprite = self.animation[self.step]
+
+  sprite = self.first + --page
+          (sprite) * 2 + --numero de sprite
+          ((sprite < 8) and 0 or 16) + --saut de ligne
+          ((sprite < 16) and 0 or 16) --saut de ligne
+
+
+  if(tick==0) self.step = (self.step % #self.animation) + 1
+
+  self.sprite = sprite
+end
+
+
+function player:draw()
+  self:animate()
+  spr(self.sprite, self.x, self.y, 2,2, self.flip)
+end
 
 
 ---
@@ -192,24 +256,24 @@ alien.__index = alien
 
 function alien:create (x, y)
 
-    a = {}
-    setmetatable(a,alien)
+  a = {}
+  setmetatable(a,alien)
 
-    a.x = x
-    a.y = y
-    a.flip = false
+  a.x = x
+  a.y = y
+  a.flip = false
 
-    a.first = 192 --first position in sprite sheet
-    a.animations = {
-       fly = {0,1,2},
-    }
+  a.first = 192 --first position in sprite sheet
+  a.animations = {
+    fly = {0,1,2},
+  }
 
-    a.animation = a.animations.fly
-    a.last_animation = {}
-    a.sprite = 0
-    a.step = 0
+  a.animation = a.animations.fly
+  a.last_animation = {}
+  a.sprite = 0
+  a.step = 0
 
-    return a
+  return a
 end
 
 function alien:animate()
@@ -241,66 +305,7 @@ end
 
 
 
-aliens = {}
-add(aliens, alien:create(100, 20))
-add(aliens, alien:create(10, 20))
 
-
-
-
---
--- animate
---
-
--- function anime()
---   frame += 1
-
---   if(frame % animation_fps==0) then
---     self.step = (self.step % #self.animation) + 1
---     frame = 0
---   end
--- end
-
--- max 16
-animation = {
-  idle = {0,1},
-  walk = {2,3,4,5,6,4},
-  ready = {7,8},
-  right = {9,10,11},
-  diagonal = {12,13,14},
-  up = {15,16,17},
-}
-
-
-step = 1
-current_anim = {}
-
-function animate(steps, page)
-
-  local page = page or 1
-  local start = page * 64
-  local sprite
-
-  if (steps != current_anim) then
-    step = 1
-    current_anim = steps
-  end
-
-  sprite = steps[step]
-
-  sprite = start + --page
-          (sprite) * 2 + --numero de sprite
-          ((sprite < 8) and 0 or 16) + --saut de ligne
-          ((sprite < 16) and 0 or 16) --saut de ligne
-
-
-  if(tick==0) then
-    step = (step % #steps) + 1
-    frame = 0
-  end
-
-  return sprite
-end
 
 --
 -- utils
