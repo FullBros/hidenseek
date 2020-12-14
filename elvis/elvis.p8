@@ -11,6 +11,7 @@ elvis_msg = {
 
 
 tick = 0
+max_tick = 32
 animate_each = 4
 
 function _init()
@@ -21,22 +22,24 @@ function _init()
   poke(0x5f41, 0b0100) --echo
   poke(0x5f43, 0b1111) --lowpass
 
-  pal(11,128+11,1) --use lime green
+  pal(11,128+10,1) --use lime green
 
   -- new hero
-  elvis = player:create(48,80)
+  elvis = player:create(56,80)
 
   aliens = {}
-  add(aliens, alien:create(100, 20))
-  add(aliens, alien:create(10, 20))
-
+  add(aliens, alien:create(300, 20))
+  add(aliens, alien:create(210, 20))
 
   music(0) -- go music!
 end
 
+
+delay_shoot = 0
 function _update()
 
-  tick = (tick + 1) % animate_each
+  tick = (tick + 1) % max_tick
+  delay_shoot += 1
 
   elvis.animation = elvis.animations.idle
 
@@ -50,6 +53,22 @@ function _update()
     if (btn(2) and btn(0)) or
        (btn(2) and btn(1)) then
         elvis.animation = elvis.animations.diagonal
+    end
+
+
+    -- new bullet
+    local direction = 0
+
+
+    if (btn(0)) direction = 1
+    if (btn(1)) direction = 5
+    if (btn(2)) direction = 3
+    if (btn(0) and btn(2)) direction = 2
+    if (btn(1) and btn(2)) direction = 4
+
+    if (direction > 0 and delay_shoot > 10) then
+      add(bullets, bullet:create(elvis.x, elvis.y, direction))
+      delay_shoot = 0
     end
 
 
@@ -67,6 +86,10 @@ function _update()
   if (btn(0)) elvis.flip = true
   if (btn(1)) elvis.flip = false
 
+
+
+  for b in all (bullets) do b:update() end
+
   play_music()
 
 end
@@ -83,13 +106,14 @@ function _draw()
   palt(12, true) -- but not for characters
 
   draw_title()
-
+  text:indication("rock this way ➡️", 64)
 
   elvis:draw()
 
-  for a in all (aliens) do
-    a:draw()
-  end
+  for a in all (aliens)  do a:draw() end
+  for b in all (bullets) do b:draw() end
+
+  cam:update()
 
 
 end
@@ -103,25 +127,30 @@ end
 function draw_title ()
 
   -- shadow
-  color(2)
-  print_center("elvis", 20, 0, 1)
-  print_center("vs", 28, 0, 1)
-  print_center("invaders", 36, 0, 1)
-  print_center("elvis", 20, 1, 1)
-  print_center("vs", 28, 1, 1)
-  print_center("invaders", 36, 1, 1)
+  color(3)
+  text:center("e l v i s", 14, 0, 1)
+  text:center("e l v i s", 14, 1, 1)
+  text:center("e l v i s", 14, 1, 0)
+
+  color(11)
+  text:center("e l v i s", 14)
+
 
   color(9)
-  print_center("elvis", 20)
+  text:center("v s", 25, 0, 1)
+  text:center("v s", 25, 1, 1)
 
   color (10)
-  print_center("vs", 28)
+  text:center("v s", 25)
+
+  color(2)
+  text:center("i n v a d e r s", 36, 0, 1)
+  text:center("i n v a d e r s", 36, 1, 1)
 
   color(8)
-  print_center("invaders", 36)
+  text:center("i n v a d e r s", 36)
 
   color(0)
-
 end
 
 
@@ -168,6 +197,7 @@ function play_music ()
 
 
   if guitar.playing then
+
     if (stat(18) == -1 or hard) then
       guitarpart = stat(16)+8
       sfx(guitarpart, 2, stat(20), hard)
@@ -177,7 +207,6 @@ function play_music ()
   end
 
 end
-
 
 
 --
@@ -234,7 +263,7 @@ function player:animate()
           ((sprite < 16) and 0 or 16) --saut de ligne
 
 
-  if(tick==0) self.step = (self.step % #self.animation) + 1
+  if(tick % animate_each == 0) self.step = (self.step % #self.animation) + 1
 
   self.sprite = sprite
 end
@@ -292,7 +321,7 @@ function alien:animate()
           ((sprite < 8) and 0 or 16) + --saut de ligne
           ((sprite < 16) and 0 or 16) --saut de ligne
 
-  if (tick == 0) self.step = (self.step % #self.animation) + 1
+  if (tick % animate_each == 0) self.step = (self.step % #self.animation) + 1
 
   self.sprite = sprite
 end
@@ -305,19 +334,124 @@ end
 
 
 
+--
+-- bullet
+--
+
+bullet = {}
+bullet.__index = bullet
+
+bullets = {} -- all bullets
+
+function bullet:create (x, y, direction)
+
+  b = {}
+  setmetatable(b,bullet)
+
+  b.x = x
+  b.y = y
+  b.radius = 2
+  b.direction = direction
+  b.speed = 3
+
+  return b
+
+end
+
+function bullet:update()
+
+  local x,y = 0,0
+
+  if (1 == self.direction) x -= self.speed
+  if (2 == self.direction) x -= self.speed y -= self.speed
+  if (3 == self.direction) y -= self.speed
+  if (4 == self.direction) x += self.speed y -= self.speed
+  if (5 == self.direction) x += self.speed
+
+
+  -- normalize diagonal moves
+  if (abs(x) + abs(y) > self.speed) then
+    local dist = sqrt(2)
+    x /= dist
+    y /= dist
+  end
+
+  self.x += x
+  self.y += y
+
+end
+
+
+function bullet:draw ()
+  color(8)
+  circfill(self.x, self.y, self.radius)
+end
+
+
+
+
+--
+-- camera
+--
+
+cam = {}
+cam.x = 0
+cam.y = 0
+cam.threeshold = 10
+
+function cam:update()
+
+  local target = {}
+
+  target.x = elvis.x - 64 -- halfscreen
+  target.x = max(target.x, 0 - cam.threeshold) -- left boundary
+
+  local direction = (cam.x > target.x) and 1 or -1
+
+  if abs(cam.x - target.x) > cam.threeshold then
+    cam.x = target.x + cam.threeshold * direction
+  end
+
+  camera(cam.x, cam.y)
+end
+
+
 
 
 --
 -- utils
 --
 
-function print_center (text, y, offx, offy)
+text = {}
+
+function text:center (t, y, offx, offy)
 
   offx = offx or 0
   offy = offy or 0
 
-  print(text, 64-flr(#text*4/2)+offx, y+offy)
+  print(t, 64-flr(#t*4/2)+offx, y+offy)
 end
+
+
+function text:blink (t, y, offx, offy)
+  if (tick % 16 < 5) return
+  text:center(t, y, offx, offy)
+end
+
+function text:indication (t)
+
+  -- shadow()
+  color(13)
+  text:blink(t, 50, 0, 1)
+  --text:blink(t, 50, 1, 0)
+  text:blink(t, 50, 1, 1)
+
+  color(7)
+  text:blink(t, 50)
+
+
+end
+
 
 
 __gfx__
