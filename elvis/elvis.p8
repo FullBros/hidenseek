@@ -15,7 +15,7 @@ max_tick = 32
 animate_each = 4
 
 function _init()
-  pal(0,false)
+  --pal(0,false)
   --pal(12,true)
 
   poke(0x5f42, 0b0100) --distort
@@ -42,6 +42,7 @@ function _update()
   delay_shoot += 1
 
   elvis.animation = elvis.animations.idle
+  elvis.hard = false
 
   if btn(4) then
     elvis.animation = elvis.animations.ready
@@ -67,7 +68,7 @@ function _update()
     if (btn(1) and btn(2)) direction = 4
 
     if (direction > 0 and delay_shoot > 10) then
-      add(bullets, bullet:create(elvis.x, elvis.y, direction))
+      add(bullets, bullet:create(elvis.x+8, elvis.y+8, direction))
       delay_shoot = 0
     end
 
@@ -101,9 +102,13 @@ function _draw()
   cls()
   palt(0,false) -- use dark in sprites
 
-  palt(12, false) -- use cyan in map
+
+  draw_background(elvis.hard)
+
+  palt(12, true) -- use cyan in map
   map(0,0,0,0,128,128)
   palt(12, true) -- but not for characters
+
 
   draw_title()
   text:indication("rock this way ➡️", 64)
@@ -115,6 +120,37 @@ function _draw()
 
   cam:update()
 
+end
+
+
+
+function draw_background (hard)
+
+  hard = hard or false
+
+  if (not hard) then
+    color(12)
+    rectfill(cam.x - 84, cam.y + -20, cam.x + 128 + 20, cam.y + 188)
+    return 1
+  end
+
+  -- hard mode
+  local alternate = 0
+  --local alternate = tick % 2 --psyche mode
+
+
+  for i = 0,256,16 do
+    local col = (i%32 == alternate) and 8 or 2 --2 or 9
+
+    local pts = {
+      {x=cam.x-20, y=i-tick},
+      {x=cam.x+64, y=i-83-tick},
+      {x=cam.x + 128 + 20, y=i-tick},
+    }
+
+    color(col)
+    polyfill(pts)
+  end
 
 end
 
@@ -183,7 +219,7 @@ function play_music ()
       elvis.animation == elvis.animations.up
     ) then
 
-    hard = (elvis.animation == elvis.animations.up)
+    elvis.hard = (elvis.animation == elvis.animations.up)
 
     --if (guitar.playing == false or hard == 1) then
       -- guitarpart = stat(16)+8
@@ -198,7 +234,7 @@ function play_music ()
 
   if guitar.playing then
 
-    if (stat(18) == -1 or hard) then
+    if (stat(18) == -1 or elvis.hard) then
       guitarpart = stat(16)+8
       sfx(guitarpart, 2, stat(20), hard)
     end
@@ -224,8 +260,9 @@ function player:create (x, y)
   p.x = x
   p.y = y
   p.flip = false
-  player.animation = {}
-  player.speed = 2
+  p.animation = {}
+  p.speed = 2
+  p.hard = false
 
   p.first = 64 --first position in sprite sheet
   p.animations = {
@@ -353,6 +390,7 @@ function bullet:create (x, y, direction)
   b.radius = 2
   b.direction = direction
   b.speed = 3
+  b.color = 0
 
   return b
 
@@ -383,10 +421,18 @@ end
 
 
 function bullet:draw ()
-  color(8)
-  circfill(self.x, self.y, self.radius)
-end
+  --color(8)
+  --circfill(self.x, self.y, self.radius + 1)
 
+  --alt color
+  self.color = (self.color + 1) % 2
+  local c = (self.color == 1) and 14 or 9
+
+  color(c)
+  circfill(self.x, self.y, self.radius)
+  circfill(self.x, self.y, self.radius - 1)
+
+end
 
 
 
@@ -448,9 +494,51 @@ function text:indication (t)
 
   color(7)
   text:blink(t, 50)
-
-
 end
+
+
+
+-- define polygon edges
+local function polyf_edge(a, b, xls, xrs)
+ local ax,ay=a.x,a.y
+ local bx,by=b.x,b.y
+ if (ay==by) return
+
+ local x,dx=ax,(bx-ax)/abs(by-ay)
+ if ay<by then
+  for y=ay,by do
+   xrs[y]=x;x+=dx
+  end
+ else
+  for y=ay,by,-1 do
+   xls[y]=x;x+=dx
+  end
+ end
+end
+
+
+-- draw a polygon
+function polyfill(pts)
+ local i, x, y, xl
+ local xleft, xright = {}, {}
+ local npts = #pts
+
+ -- if there is less than 2 pts
+ -- there is nothing to draw
+ if #pts < 3 then return end
+
+ for i=1, npts do
+  polyf_edge(pts[i],
+             pts[i%npts+1],
+             xleft, xright)
+ end
+ for y, xl in pairs(xleft) do
+  line(xl, y, xright[y], y)
+ end
+end
+
+
+
 
 
 
