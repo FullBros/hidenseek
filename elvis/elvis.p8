@@ -127,6 +127,7 @@ end
 function draw_background (hard)
 
   hard = hard or false
+  --pal(6, 6)
 
   if (not hard) then
     color(12)
@@ -138,6 +139,7 @@ function draw_background (hard)
   local alternate = 0
   --local alternate = tick % 2 --psyche mode
 
+  --pal(6, 14)
 
   for i = 0,256,16 do
     local col = (i%32 == alternate) and 8 or 2 --2 or 9
