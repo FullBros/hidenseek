@@ -3,11 +3,6 @@ version 29
 __lua__
 
 
-elvis_msg = {
-  "oh yeah",
-  "that's right",
-  "come on",
-}
 
 
 tick = 0
@@ -21,11 +16,12 @@ function _init()
   --pal(0,false)
   --pal(12,true)
 
+  graphics.palette()
+
   poke(0x5f42, 0b0100) --distort
   poke(0x5f41, 0b0100) --echo
   poke(0x5f43, 0b1111) --lowpass
 
-  pal(11,128+10,1) --use lime green
 
   -- new hero
   elvis = player:create(56,80)
@@ -88,11 +84,9 @@ function _update()
   for b in all (bullets) do b:update() end
   for a in all (aliens)  do a:update() end
 
-  select_checkpoint()
+  checkpoint = game.checkpoint()
+  checkpoint:update()
 
-  if (current_checkpoint != nil) then
-    current_checkpoint:update()
-  end
 
   play_music()
 
@@ -106,21 +100,18 @@ function _draw()
   palt(0,false) -- use dark in sprites
 
 
-  draw_background(elvis.hard)
+  graphics.background(elvis.hard)
 
   palt(12, true) -- use cyan in map
   map(0,0,0,0,128,128)
   palt(12, true) -- but not for characters
 
 
-  draw_title()
-  text:indication("rock this way ➡️")
-
   elvis:draw()
 
-  if (current_checkpoint != nil) then
-    current_checkpoint:draw()
-  end
+
+  checkpoint = game.checkpoint()
+  checkpoint:draw()
 
 
   for a in all (aliens)  do a:draw() end
@@ -133,7 +124,191 @@ end
 
 
 
-function draw_background (hard)
+
+
+
+
+
+--
+-- game
+--
+
+game = {}
+game._checkpoint = nil
+game.pause = false
+
+
+-- check progression & return current checkpoint
+function game.checkpoint ()
+
+  for i, c in ipairs(checkpoints) do
+    if ( elvis.x > c.x ) then
+      c:init()
+      game._checkpoint = c
+      deli(checkpoints, i)
+      return c
+    end
+
+  end
+
+  return game._checkpoint
+end
+
+
+
+
+
+
+
+--
+-- checkpoints & levels
+--
+
+checkpoints = {}
+checkpoint = {}
+checkpoint.__index = checkpoint
+
+function checkpoint:create (x, init, update, draw)
+
+  c = {}
+  setmetatable(c, checkpoint)
+
+  c.x = x
+  c.init = init
+  c.update = update
+  c.draw = draw
+
+  return c
+
+end
+
+
+
+add(checkpoints, checkpoint:create(
+  0,
+
+  -- init
+  function (self)
+    add(aliens, alien:create(80, 0))
+    add(aliens, alien:create(20, 0))
+    add(aliens, alien:create(120,10))
+  end,
+
+  -- update
+  function (self)
+  end,
+
+  -- draw
+  function (self)
+    graphics.title()
+    graphics.tip("rock this way ➡️")
+
+  end
+))
+
+
+add(checkpoints, checkpoint:create(
+  230,
+
+  -- init
+  function (self)
+    self.tutorial = true
+    self.ennemies = false
+  end,
+
+  -- update
+  function (self)
+
+    -- if ( self.ennemies) then
+    --   add(aliens, alien:create(280, 30))
+    --   add(aliens, alien:create(320, 70))
+    --   add(aliens, alien:create(330, 100))
+    --   self.ennemies = true
+    -- end
+  end,
+
+  -- draw
+  function (self)
+
+    if (self.tutorial and elvis.animation != elvis.animations.ready) then
+       graphics.tip("press 🅾️ and be ready", self.x)
+    end
+
+    if (self.tutorial and elvis.animation == elvis.animations.ready) then
+       graphics.tip("now use directions. good luck!", self.x)
+    end
+
+    if (self.tutorial and guitar.playing) then
+       self.tutorial = false
+    end
+
+
+  end
+
+))
+
+
+
+---
+--- graphics
+---
+
+graphics = {}
+
+function graphics.palette ()
+  for i=0,15 do pal(i, i) end
+  pal(11,128+10,1) --use lime green
+end
+
+-- draw in white (for hits)
+function graphics.white()
+  for i=0,15 do pal(i, 7) end
+end
+
+function graphics.title ()
+
+  -- shadow
+  color(3)
+  text:center("e l v i s", 14, 0, 1)
+  text:center("e l v i s", 14, 1, 1)
+  text:center("e l v i s", 14, 1, 0)
+
+  color(11)
+  text:center("e l v i s", 14)
+
+
+  color(9)
+  text:center("v s", 25, 0, 1)
+  text:center("v s", 25, 1, 1)
+
+  color (10)
+  text:center("v s", 25)
+
+  color(2)
+  text:center("i n v a d e r s", 36, 0, 1)
+  text:center("i n v a d e r s", 36, 1, 1)
+
+  color(8)
+  text:center("i n v a d e r s", 36)
+
+  color(0)
+end
+
+
+function graphics.tip (t, offx)
+  offx = offx or 0
+
+  -- shadow()
+  color(13)
+  text:blink(t, 50, offx, 1)
+  text:blink(t, 50, offx + 1, 1)
+
+  color(7)
+  text:blink(t, 50, offx)
+end
+
+
+function graphics.background (hard)
 
   hard = hard or false
   --pal(6, 6)
@@ -166,146 +341,19 @@ end
 
 
 
---
--- splash
---
-
-function draw_title ()
-
-  -- shadow
-  color(3)
-  text:center("e l v i s", 14, 0, 1)
-  text:center("e l v i s", 14, 1, 1)
-  text:center("e l v i s", 14, 1, 0)
-
-  color(11)
-  text:center("e l v i s", 14)
-
-
-  color(9)
-  text:center("v s", 25, 0, 1)
-  text:center("v s", 25, 1, 1)
-
-  color (10)
-  text:center("v s", 25)
-
-  color(2)
-  text:center("i n v a d e r s", 36, 0, 1)
-  text:center("i n v a d e r s", 36, 1, 1)
-
-  color(8)
-  text:center("i n v a d e r s", 36)
-
-  color(0)
-end
-
-
---
--- game
---
-
-
-checkpoints = {}
-
-checkpoint = {}
-checkpoint.__index = checkpoint
-current_checkpoint = nil
-
-function checkpoint:create (x, init, update, draw)
-
-  c = {}
-  setmetatable(c, checkpoint)
-
-  c.x = x
-  c.init = init
-  c.update = update
-  c.draw = draw
-
-  return c
-
-end
-
-function select_checkpoint ()
-
-  for k, c in ipairs(checkpoints) do
-
-    if ( elvis.x > c.x ) then
-      current_checkpoint = c
-      c:init()
-      checkpoints[k] = nil
-      return
-    end
-
-  end
-end
-
--- first checkpoint
-add(checkpoints, checkpoint:create(
-  230,
-
-  -- init
-  function (self)
-    self.tutorial = true
-    self.ennemies = false
-  end,
-
-  -- update
-  function (self)
-
-    -- if ( self.ennemies) then
-    --   add(aliens, alien:create(280, 30))
-    --   add(aliens, alien:create(320, 70))
-    --   add(aliens, alien:create(330, 100))
-    --   self.ennemies = true
-    -- end
-  end,
-
-  -- draw
-  function (self)
-
-    if (self.tutorial and elvis.animation != elvis.animations.ready) then
-       text:indication("press 🅾️ and be ready", self.x)
-    end
-
-    if (self.tutorial and elvis.animation == elvis.animations.ready) then
-       text:indication("now use directions. good luck!", self.x)
-    end
-
-    if (self.tutorial and guitar.playing) then
-       self.tutorial = false
-    end
-
-
-  end
-
-))
-
-
-
---cp1.init("test plus long")
---stop()
---add(checkpoints, cp1)
-
-
 
 --
 -- music
 --
 
-bpm = 160
-measure = 32
+sound = {}
 
-beat = 0
+sound.basslines = {5,6}
+sound.drums = {0,1}
 
-soundtrack = {}
-soundtrack.measure = 0
-soundtrack.basslines = {5,6}
-soundtrack.drums = {0,1}
 
 guitar = {}
 guitar.playing = false
-
-
 
 
 function play_music ()
@@ -343,12 +391,22 @@ function play_music ()
 end
 
 
+
+
+
 --
 -- player
 --
 
 player = {}
 player.__index = player
+
+elvis_msg = {
+  "oh yeah",
+  "that's right",
+  "come on",
+}
+
 
 function player:create (x, y)
 
@@ -410,6 +468,7 @@ function player:draw()
 end
 
 
+
 ---
 --- aliens
 ---
@@ -426,8 +485,12 @@ function alien:create (x, y)
   a.x = x
   a.y = y
   a.flip = false
-  a.w = 1
-  a.h = 1
+  a.width = 8
+  a.height = 8
+  a.speed = .5
+  a._hit = false
+  a._die = false
+  a.countdown = 5
 
   a.first = 224 --first position in sprite sheet
   a.animations = {
@@ -477,23 +540,55 @@ function alien:update ()
   target.y = elvis.y + 4
 
 
-  if (target.x > self.x) self.x+=1
-  if (target.x < self.x) self.x-=1
-  if (target.y > self.y) self.y+=1
-  if (target.y < self.y) self.y-=1
+  if (target.x > self.x) self.x+= self.speed
+  if (target.x < self.x) self.x-= self.speed
+  if (target.y > self.y) self.y+= self.speed
+  if (target.y < self.y) self.y-= self.speed
 
-  -- collisions
-  for b in all(bullets) do
-
-  end
 
   self.flip = (elvis.x > self.x)
 
+  -- define current sprite
+  self:animate()
+
+  if (self._die) self.countdown -= 1
+  if (self.countdown == 0) self:delete()
+
 end
 
+function alien:hit()
+  self._hit = true
+  self.animation = self.animations.die
+  self.countdown=8
+end
+
+function alien:hitbox()
+  return {
+    x = self.x - self.width/2,
+    y = self.y - self.height/2,
+    width  = self.width,
+    height = self.height,
+  }
+end
+
+function alien:delete()
+  del(aliens, self)
+end
+
+
 function alien:draw()
-  self:animate()
-  spr(self.sprite, self.x, self.y, self.w, self.h, self.flip)
+
+  if (self._hit) then
+    graphics.white()
+    self._die = true
+    self._hit = false
+  end
+
+  spr(self.sprite, self.x, self.y, 1, 1, self.flip)
+
+  graphics.palette()
+
+
 end
 
 
@@ -533,7 +628,6 @@ function bullet:update()
   if (4 == self.direction) x += self.speed y -= self.speed
   if (5 == self.direction) x += self.speed
 
-
   -- normalize diagonal moves
   if (abs(x) + abs(y) > self.speed) then
     local dist = sqrt(2)
@@ -541,10 +635,37 @@ function bullet:update()
     y /= dist
   end
 
+  -- move
   self.x += x
   self.y += y
+
+  self:collision()
+
 end
 
+
+function bullet:collision ()
+  for a in all(aliens) do
+    if collision(self:hitbox(), a:hitbox()) then
+      a:hit()
+      self:delete()
+    end
+  end
+end
+
+
+function bullet:hitbox()
+  return {
+    x = self.x - self.radius,
+    y = self.y - self.radius,
+    width  = self.radius*2,
+    height = self.radius*2,
+  }
+end
+
+function bullet:delete()
+  del(bullets, self)
+end
 
 function bullet:draw ()
   --color(8)
@@ -557,7 +678,6 @@ function bullet:draw ()
   color(c)
   circfill(self.x, self.y, self.radius)
   circfill(self.x, self.y, self.radius - 1)
-
 end
 
 
@@ -611,17 +731,16 @@ function text:blink (t, y, offx, offy)
 end
 
 
-function text:indication (t, offx)
-  offx = offx or 0
 
-  -- shadow()
-  color(13)
-  text:blink(t, 50, offx, 1)
-  text:blink(t, 50, offx + 1, 1)
+function collision (o1, o2)
 
-  color(7)
-  text:blink(t, 50, offx)
+  return (o1.x < o2.x + o2.width and
+   o1.x + o1.width > o2.x and
+   o1.y < o2.y + o2.height and
+   o1.y + o1.height > o2.y)
+
 end
+
 
 
 
