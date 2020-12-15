@@ -14,6 +14,9 @@ tick = 0
 max_tick = 32
 animate_each = 4
 
+
+
+
 function _init()
   --pal(0,false)
   --pal(12,true)
@@ -26,10 +29,6 @@ function _init()
 
   -- new hero
   elvis = player:create(56,80)
-
-  aliens = {}
-  add(aliens, alien:create(300, 20))
-  add(aliens, alien:create(210, 20))
 
   music(0) -- go music!
 end
@@ -56,10 +55,8 @@ function _update()
         elvis.animation = elvis.animations.diagonal
     end
 
-
     -- new bullet
     local direction = 0
-
 
     if (btn(0)) direction = 1
     if (btn(1)) direction = 5
@@ -88,8 +85,14 @@ function _update()
   if (btn(1)) elvis.flip = false
 
 
-
   for b in all (bullets) do b:update() end
+  for a in all (aliens)  do a:update() end
+
+  select_checkpoint()
+
+  if (current_checkpoint != nil) then
+    current_checkpoint:update()
+  end
 
   play_music()
 
@@ -111,14 +114,20 @@ function _draw()
 
 
   draw_title()
-  text:indication("rock this way ➡️", 64)
+  text:indication("rock this way ➡️")
 
   elvis:draw()
+
+  if (current_checkpoint != nil) then
+    current_checkpoint:draw()
+  end
+
 
   for a in all (aliens)  do a:draw() end
   for b in all (bullets) do b:draw() end
 
   cam:update()
+  --print(elvis.x, cam.x, cam.y)
 
 end
 
@@ -153,7 +162,6 @@ function draw_background (hard)
     color(col)
     polyfill(pts)
   end
-
 end
 
 
@@ -190,6 +198,94 @@ function draw_title ()
 
   color(0)
 end
+
+
+--
+-- game
+--
+
+
+checkpoints = {}
+
+checkpoint = {}
+checkpoint.__index = checkpoint
+current_checkpoint = nil
+
+function checkpoint:create (x, init, update, draw)
+
+  c = {}
+  setmetatable(c, checkpoint)
+
+  c.x = x
+  c.init = init
+  c.update = update
+  c.draw = draw
+
+  return c
+
+end
+
+function select_checkpoint ()
+
+  for k, c in ipairs(checkpoints) do
+
+    if ( elvis.x > c.x ) then
+      current_checkpoint = c
+      c:init()
+      checkpoints[k] = nil
+      return
+    end
+
+  end
+end
+
+-- first checkpoint
+add(checkpoints, checkpoint:create(
+  230,
+
+  -- init
+  function (self)
+    self.tutorial = true
+    self.ennemies = false
+  end,
+
+  -- update
+  function (self)
+
+    -- if ( self.ennemies) then
+    --   add(aliens, alien:create(280, 30))
+    --   add(aliens, alien:create(320, 70))
+    --   add(aliens, alien:create(330, 100))
+    --   self.ennemies = true
+    -- end
+  end,
+
+  -- draw
+  function (self)
+
+    if (self.tutorial and elvis.animation != elvis.animations.ready) then
+       text:indication("press 🅾️ and be ready", self.x)
+    end
+
+    if (self.tutorial and elvis.animation == elvis.animations.ready) then
+       text:indication("now use directions. good luck!", self.x)
+    end
+
+    if (self.tutorial and guitar.playing) then
+       self.tutorial = false
+    end
+
+
+  end
+
+))
+
+
+
+--cp1.init("test plus long")
+--stop()
+--add(checkpoints, cp1)
+
 
 
 --
@@ -318,7 +414,7 @@ end
 --- aliens
 ---
 
-
+aliens = {}
 alien = {}
 alien.__index = alien
 
@@ -330,10 +426,13 @@ function alien:create (x, y)
   a.x = x
   a.y = y
   a.flip = false
+  a.w = 1
+  a.h = 1
 
-  a.first = 192 --first position in sprite sheet
+  a.first = 224 --first position in sprite sheet
   a.animations = {
-    fly = {0,1,2},
+    fly = {0,1},
+    die = {2}
   }
 
   a.animation = a.animations.fly
@@ -355,10 +454,15 @@ function alien:animate()
 
   sprite = self.animation[self.step]
 
+  -- sprite = self.first + --page
+  --         (sprite) * 2 + --numero de sprite
+  --         ((sprite < 8) and 0 or 16) + --saut de ligne
+  --         ((sprite < 16) and 0 or 16) --saut de ligne
+
   sprite = self.first + --page
-          (sprite) * 2 + --numero de sprite
-          ((sprite < 8) and 0 or 16) + --saut de ligne
-          ((sprite < 16) and 0 or 16) --saut de ligne
+          (sprite)--numero de sprite
+          -- + ((sprite < 8) and 0 or 16) + --saut de ligne
+          --((sprite < 16) and 0 or 16) --saut de ligne
 
   if (tick % animate_each == 0) self.step = (self.step % #self.animation) + 1
 
@@ -366,9 +470,30 @@ function alien:animate()
 end
 
 
+function alien:update ()
+
+  local target = {}
+  target.x = elvis.x + 4
+  target.y = elvis.y + 4
+
+
+  if (target.x > self.x) self.x+=1
+  if (target.x < self.x) self.x-=1
+  if (target.y > self.y) self.y+=1
+  if (target.y < self.y) self.y-=1
+
+  -- collisions
+  for b in all(bullets) do
+
+  end
+
+  self.flip = (elvis.x > self.x)
+
+end
+
 function alien:draw()
   self:animate()
-  spr(self.sprite, self.x, self.y, 2,2, self.flip)
+  spr(self.sprite, self.x, self.y, self.w, self.h, self.flip)
 end
 
 
@@ -377,10 +502,11 @@ end
 -- bullet
 --
 
+bullets = {} -- all bullets
 bullet = {}
 bullet.__index = bullet
 
-bullets = {} -- all bullets
+
 
 function bullet:create (x, y, direction)
 
@@ -395,7 +521,6 @@ function bullet:create (x, y, direction)
   b.color = 0
 
   return b
-
 end
 
 function bullet:update()
@@ -418,7 +543,6 @@ function bullet:update()
 
   self.x += x
   self.y += y
-
 end
 
 
@@ -445,7 +569,7 @@ end
 cam = {}
 cam.x = 0
 cam.y = 0
-cam.threeshold = 10
+cam.threeshold = 5
 
 function cam:update()
 
@@ -486,16 +610,17 @@ function text:blink (t, y, offx, offy)
   text:center(t, y, offx, offy)
 end
 
-function text:indication (t)
+
+function text:indication (t, offx)
+  offx = offx or 0
 
   -- shadow()
   color(13)
-  text:blink(t, 50, 0, 1)
-  --text:blink(t, 50, 1, 0)
-  text:blink(t, 50, 1, 1)
+  text:blink(t, 50, offx, 1)
+  text:blink(t, 50, offx + 1, 1)
 
   color(7)
-  text:blink(t, 50)
+  text:blink(t, 50, offx)
 end
 
 
@@ -657,6 +782,14 @@ cc33bb737bbb33cc3c33bb737bbb33c3cc33bb737bbb33c300000000000000000000000000000000
 3cc33bbbbbb33cc3ccc33bbbbbb33cccccc33bbbbbb33cc300000000000000000000000000000000000000000000000000000000000000000000000000000000
 333ccbbbbbbcc333333ccbbbbbbc333c333ccbbbbbbc333300000000000000000000000000000000000000000000000000000000000000000000000000000000
 cc33333bb33333cc3c33333bb3333c333c33333bb3333ccc00000000000000000000000000000000000000000000000000000000000000000000000000000000
+c499e4ccc499e4ccc77977cc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+c9494eecc9494eec7079707c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+977977ee977977ee7779777e00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+907907ee907907ee999999ee00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+999999ee999999ee999899ee00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+998899ee998899ee999999ee00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+cecece8ccececceccecececc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+8c8cc8c8c8c88c88c8c8c8cc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __label__
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -672,36 +805,34 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccccccccccccccqqq3ccccq3ccccccq3q3ccccqqq3cccccqq3cccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccccccccccccccq333ccccq3ccccccq3q3cccc3q33ccccq333cccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccccccccccccccqq3cccccq3ccccccq3q3cccccq3cccccqqq3cccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccccccccccccccq33cccccq3ccccccqqq3cccccq3ccccc33q3cccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccccccccccccccqqq3ccccqqq3cccc3q33ccccqqq3ccccqq33cccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccc3333cccc3333ccccc33ccccc3333cccc333ccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccc999c9ccc9c9c999cc99ccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccc922292cc929229229222cccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccc99cc92cc9292c92c999ccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccc922c92cc9992c92c2292cccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccc999c999c2922999c9922cccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccc22222222c22c2222222ccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccacaccaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca2a2a222cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca2a2aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccaaa222a2cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc2a22aa22cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc22c222ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccacaccccccaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccca9a9cccca999cccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccca9a9ccccaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccaaa9cccc99a9cccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccc9a99ccccaa99cccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc99ccccc999ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccc888c88cc8c8c888c88cc888c888cc88ccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccc2822828c82828282828c822282828222cccccccccccccccccccccccccccccccccccccccccccccccc
-ccccccccccccccccccccccccccccccccccccccccccccccccc82c828282828882828288cc8822888ccccccccccccccccccccccccccccccccccccccccccccccccc
-ccccccccccccccccccccccccccccccccccccccccccccccccc82c8282888282828282822c828c2282cccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccc888c8282282282828882888c82828822cccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccc22222222c22c2222222222222222222ccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccc888ccccc88cccccc8c8ccccc888ccccc88cccccc888ccccc888cccccc88ccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccc2822cccc828ccccc8282cccc8282cccc828ccccc8222cccc8282cccc8222cccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccc82ccccc8282cccc8282cccc8882cccc8282cccc88cccccc8822cccc888ccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccc82ccccc8282cccc8882cccc8282cccc8282cccc822ccccc828ccccc2282cccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccc888ccccc8282cccc2822cccc8282cccc8882cccc888ccccc8282cccc8822cccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccc2222cccc2222ccccc22ccccc2222cccc2222cccc2222cccc2222cccc222ccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -710,10 +841,12 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccc777cc77cc77c7c7ccccc777c7c7c777cc77ccccc7c7c777c7c7cccccc77777cccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccc7d7d7d7d7ddd7d7dccccd7dd7d7dd7dd7dddcccc7d7d7d7d7d7dcccc77dd777ccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccc77dd7d7d7dcc77ddccccc7dc777dc7dc777ccccc7d7d777d777dcccc77dcd77dcccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccc7d7c7d7d7dcc7d7cccccc7dc7d7dc7dcdd7dcccc777d7d7ddd7dcccc77dc777dcccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccc7d7d77ddd77c7d7dccccc7dc7d7d777c77ddcccc777d7d7d777dccccd77777ddcccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccdddddddccdddddddcccccddcdddddddddddcccccddddddddddddcccccddddddccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -752,8 +885,8 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc4777ccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc4c7777cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccfcc7cc77ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccffc77ccc7ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc0ccc0cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc00cc00ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc0ccc00ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc00cc0cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 50000505000000505000050500000050500005050000005050000505000000505000050500000050500005050000005050000505000000505000050500000050
 55005050500000555500505050000055550050505000005555005050500000555500505050000055550050505000005555005050500000555500505050000055
