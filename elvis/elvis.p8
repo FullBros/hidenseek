@@ -2,15 +2,9 @@ pico-8 cartridge // http://www.pico-8.com
 version 29
 __lua__
 
-
-
-
 tick = 0
 max_tick = 32
 animate_each = 4
-
-
-
 
 function _init()
   --pal(0,false)
@@ -23,8 +17,11 @@ function _init()
   poke(0x5f43, 0b1111) --lowpass
 
 
+  -- first level
+  game.level = levels[1]
+
   -- new hero
-  elvis = player:create(56,80)
+  elvis = player:create(62,104)
 
   music(0) -- go music!
 end
@@ -36,60 +33,13 @@ function _update()
   tick = (tick + 1) % max_tick
   delay_shoot += 1
 
-  elvis.animation = elvis.animations.idle
-  elvis.hard = false
+  game.level:update()
 
-  if btn(4) then
-    elvis.animation = elvis.animations.ready
-
-    if (btn(0) or btn(1)) elvis.animation = elvis.animations.right
-    if (btn(2)) elvis.animation = elvis.animations.up
-
-    --playing diagonal
-    if (btn(2) and btn(0)) or
-       (btn(2) and btn(1)) then
-        elvis.animation = elvis.animations.diagonal
-    end
-
-    -- new bullet
-    local direction = 0
-
-    if (btn(0)) direction = 1
-    if (btn(1)) direction = 5
-    if (btn(2)) direction = 3
-    if (btn(0) and btn(2)) direction = 2
-    if (btn(1) and btn(2)) direction = 4
-
-    if (direction > 0 and delay_shoot > 10) then
-      add(bullets, bullet:create(elvis.x+8, elvis.y+8, direction))
-      delay_shoot = 0
-    end
-
-
-  else
-
-    if (btn(0) or btn(1)) elvis.animation = elvis.animations.walk
-
-    --moves
-    if (btn(0)) elvis.x -= elvis.speed
-    if (btn(1)) elvis.x += elvis.speed
-  end
-
-
-  -- flip sprite
-  if (btn(0)) elvis.flip = true
-  if (btn(1)) elvis.flip = false
-
-
+  elvis:update()
   for b in all (bullets) do b:update() end
   for a in all (aliens)  do a:update() end
 
-  checkpoint = game.checkpoint()
-  checkpoint:update()
-
-
   play_music()
-
 end
 
 
@@ -108,11 +58,7 @@ function _draw()
 
 
   elvis:draw()
-
-
-  checkpoint = game.checkpoint()
-  checkpoint:draw()
-
+  game.level:draw()
 
   for a in all (aliens)  do a:draw() end
   for b in all (bullets) do b:draw() end
@@ -120,12 +66,14 @@ function _draw()
   cam:update()
   --print(elvis.x, cam.x, cam.y)
 
+  graphics.infos()
+
+  --debug.log(game.level.number)
+  debug.show ()
+
+  --graphics.dialog({"elvis, you good?", "i feel some kind of", "tension"})
+
 end
-
-
-
-
-
 
 
 
@@ -134,119 +82,193 @@ end
 --
 
 game = {}
-game._checkpoint = nil
+game.level = nil
 game.pause = false
+game.infos = false -- lives & level
+game.debug = false
 
 
--- check progression & return current checkpoint
-function game.checkpoint ()
 
-  for i, c in ipairs(checkpoints) do
-    if ( elvis.x > c.x ) then
-      c:init()
-      game._checkpoint = c
-      deli(checkpoints, i)
-      return c
-    end
+--
+-- levels
+--
 
+levels = {}
+level = {}
+level.__index = level
+
+function level:create (n, limits, init, update, draw)
+
+
+  l = {}
+  setmetatable(l, level)
+
+  l.number = n
+  l.limits = limits
+  l.checkpoint = nil
+
+  -- functions
+  l.init = init
+  l.update = update
+  l.draw = draw
+
+
+  return l
+end
+
+function level:next()
+
+  -- checkpoint to the next level
+  if not self.checkpoint then
+    self.checkpoint = self.limits[2] + 64
+    self.limits[2] += 127 -- let walk right
   end
 
-  return game._checkpoint
+  if (elvis.x > self.checkpoint) then
+    del(levels, self)
+    game.level = levels[1]
+    game.level:init()
+  end
 end
 
 
-
-
-
-
-
---
--- checkpoints & levels
---
-
-checkpoints = {}
-checkpoint = {}
-checkpoint.__index = checkpoint
-
-function checkpoint:create (x, init, update, draw)
-
-  c = {}
-  setmetatable(c, checkpoint)
-
-  c.x = x
-  c.init = init
-  c.update = update
-  c.draw = draw
-
-  return c
-
-end
-
-
-
-add(checkpoints, checkpoint:create(
+-- first level
+add(levels, level:create(
   0,
+  {0, 127},
 
   -- init
   function (self)
-    add(aliens, alien:create(80, 0))
-    add(aliens, alien:create(20, 0))
-    add(aliens, alien:create(120,10))
   end,
 
   -- update
   function (self)
+    self:next()
   end,
 
   -- draw
   function (self)
     graphics.title()
-    graphics.tip("rock this way ➡️")
-
+    graphics.tip("rock this way ➡️", 0, 12)
   end
 ))
 
 
-add(checkpoints, checkpoint:create(
-  230,
+add(levels, level:create(
+  1,
+  {127, 255},
 
   -- init
   function (self)
     self.tutorial = true
-    self.ennemies = false
+    self.message = ""
   end,
 
   -- update
   function (self)
 
-    -- if ( self.ennemies) then
-    --   add(aliens, alien:create(280, 30))
-    --   add(aliens, alien:create(320, 70))
-    --   add(aliens, alien:create(330, 100))
-    --   self.ennemies = true
-    -- end
+    if self.tutorial then
+      if (elvis.animation != elvis.animations.ready) self.message = "press 🅾️ to get ready"
+      if (elvis.animation == elvis.animations.ready) self.message = "...and use direction to aim"
+    end
+
+    if (guitar.playing) then
+      self.message = "now go, elvis! ➡️"
+      self.tutorial = false
+      game.infos = true
+    end
+
+    if (not self.tutorial) self:next()
+
   end,
 
   -- draw
   function (self)
-
-    if (self.tutorial and elvis.animation != elvis.animations.ready) then
-       graphics.tip("press 🅾️ and be ready", self.x)
-    end
-
-    if (self.tutorial and elvis.animation == elvis.animations.ready) then
-       graphics.tip("now use directions. good luck!", self.x)
-    end
-
-    if (self.tutorial and guitar.playing) then
-       self.tutorial = false
-    end
-
-
+    graphics.tip(self.message, cam.x)
   end
-
 ))
 
+
+
+
+add(levels, level:create(
+  2,
+  {256,383},
+
+  -- init
+  function (self)
+      self.message = ""
+
+      add(aliens, alien:create(elvis.x - 80, elvis.y + 4))
+      add(aliens, alien:create(elvis.x + 100, elvis.y + 4))
+      add(aliens, alien:create(elvis.x, -60))
+      add(aliens, alien:create(elvis.x -90,  -30))
+      add(aliens, alien:create(elvis.x +100, -40))
+  end,
+
+  -- update
+  function (self)
+    if (#aliens == 0) then
+      self:next()
+      self.message = "that was an easy one ➡️"
+    end
+  end,
+
+  -- draw
+  function (self)
+    graphics.tip(self.message, cam.x)
+  end
+))
+
+
+add(levels, level:create(
+  3,
+  {384,511},
+
+  -- init
+  function (self)
+      add(aliens, alien:create(elvis.x - 80, elvis.y))
+      add(aliens, alien:create(elvis.x - 100, elvis.y))
+      add(aliens, alien:create(elvis.x + 90, elvis.y))
+      add(aliens, alien:create(elvis.x + 110, elvis.y))
+      add(aliens, alien:create(elvis.x, -60))
+      add(aliens, alien:create(elvis.x -80,  -20))
+      add(aliens, alien:create(elvis.x -90,  -30))
+      add(aliens, alien:create(elvis.x -110, -40))
+      add(aliens, alien:create(elvis.x +100, -40))
+  end,
+
+  -- update
+  function (self)
+  end,
+
+  -- draw
+  function (self)
+  end
+))
+
+--
+-- dialog
+--
+
+dialog = {}
+dialog.__index = dialog
+
+function dialog:create ()
+
+  d = {}
+  setmetatable(d, dialog)
+
+
+
+  return d
+end
+
+-- text or table (multiline)
+function dialog:add (text)
+
+
+end
 
 
 ---
@@ -254,6 +276,8 @@ add(checkpoints, checkpoint:create(
 ---
 
 graphics = {}
+graphics.timer = 0
+
 
 function graphics.palette ()
   for i=0,15 do pal(i, i) end
@@ -267,45 +291,86 @@ end
 
 function graphics.title ()
 
+  local top = 30
+
   -- shadow
   color(3)
-  text:center("e l v i s", 14, 0, 1)
-  text:center("e l v i s", 14, 1, 1)
-  text:center("e l v i s", 14, 1, 0)
+  text:center("e l v i s", top, 0, 1)
+  text:center("e l v i s", top, 1, 1)
+  --text:center("e l v i s", top, 1, 0)
 
   color(11)
-  text:center("e l v i s", 14)
+  text:center("e l v i s", top)
 
 
   color(9)
-  text:center("v s", 25, 0, 1)
-  text:center("v s", 25, 1, 1)
+  text:center("v s", top + 11, 0, 1)
+  text:center("v s", top + 11, 1, 1)
 
   color (10)
-  text:center("v s", 25)
+  text:center("v s", top + 11)
 
   color(2)
-  text:center("i n v a d e r s", 36, 0, 1)
-  text:center("i n v a d e r s", 36, 1, 1)
+  text:center("i n v a d e r s", top + 22, 0, 1)
+  text:center("i n v a d e r s", top + 22, 1, 1)
 
   color(8)
-  text:center("i n v a d e r s", 36)
+  text:center("i n v a d e r s", top + 22)
 
   color(0)
 end
 
 
-function graphics.tip (t, offx)
+function graphics.infos (offy)
+
+  if (not game.infos) return
+
+  local x,y = cam.x, cam.y
+  offy = offy or 0
+
+  --rectfill(x, y, x + 128, y + 8, 12)
+
+  palt(0, true)
+  spr(2,x + 3,y + offy)
+  spr(2,x + 12, y + offy)
+  spr(18,x + 21,y + offy)
+  palt(0, false)
+
+  local level = "level " .. game.level.number
+  print(level, x + 128 - (#level)*4 - 4, y+2, 7)
+end
+
+
+function graphics.tip (t, offx, offy)
   offx = offx or 0
+  offy = offy or 0
 
   -- shadow()
   color(13)
-  text:blink(t, 50, offx, 1)
-  text:blink(t, 50, offx + 1, 1)
+  text:blink(t, offy + 54, offx, 1)
+  text:blink(t, offy + 54, offx + 1, 1)
 
   color(7)
-  text:blink(t, 50, offx)
+  text:blink(t, offy + 54, offx)
 end
+
+
+function graphics.dialog (text)
+
+  text = (type(text) == "table") and text or {text}
+
+  local height = (#text + 1) * 9 + 8
+
+  rrectfill(cam.x + 5, cam.y + 5, cam.x + 128 - 5, cam.y + height + 5, 1, 3)
+  rrectfill(cam.x + 6, cam.y + 6, cam.x + 128 - 6, cam.y + height + 4, 7, 3)
+
+  for i, t in ipairs(text) do
+    print(text[i], cam.x + 10, cam.y + 5 + 5+(i-1)*9, 1)
+  end
+
+  print("press ❎", cam.x + 10, 4 + 9*(#text+1), 12)
+end
+
 
 
 function graphics.background (hard)
@@ -415,6 +480,10 @@ function player:create (x, y)
 
   p.x = x
   p.y = y
+  p.width = 12
+  p.height = 16
+
+
   p.flip = false
   p.animation = {}
   p.speed = 2
@@ -438,6 +507,74 @@ function player:create (x, y)
   return p
 end
 
+
+function player:update()
+
+  elvis.animation = elvis.animations.idle
+  elvis.hard = false
+
+  if btn(4) then
+    elvis.animation = elvis.animations.ready
+
+    if (btn(0) or btn(1)) elvis.animation = elvis.animations.right
+    if (btn(2)) elvis.animation = elvis.animations.up
+
+    --playing diagonal
+    if (btn(2) and btn(0)) or
+       (btn(2) and btn(1)) then
+        elvis.animation = elvis.animations.diagonal
+    end
+
+    -- new bullet
+    local direction = 0
+
+    if (btn(0)) direction = 1
+    if (btn(1)) direction = 5
+    if (btn(2)) direction = 3
+    if (btn(0) and btn(2)) direction = 2
+    if (btn(1) and btn(2)) direction = 4
+
+    if (direction > 0 and delay_shoot > 10) then
+      add(bullets, bullet:create(elvis.x, elvis.y, direction))
+      delay_shoot = 0
+    end
+
+
+  -- moves
+  else
+
+    if (btn(0) or btn(1)) elvis.animation = elvis.animations.walk
+
+    --moves
+    local vx = 0
+    if (btn(0)) vx = -elvis.speed
+    if (btn(1)) vx = elvis.speed
+
+    -- level boundaries
+    local hitbox = elvis:hitbox()
+    if (hitbox.x + vx < game.level.limits[1]) vx = 0 -- left
+    if (hitbox.x + hitbox.width + vx > game.level.limits[2]) vx = 0 -- right
+    --posx = min(self.x + self.width/2 + posx, game.level.limits[2]) -- left
+
+    -- move
+    self.x += vx;
+  end
+
+
+  -- flip sprite
+  if (btn(0)) elvis.flip = true
+  if (btn(1)) elvis.flip = false
+
+end
+
+function player:hitbox()
+  return {
+    x = self.x - self.width/2,
+    y = self.y - self.height/2,
+    width  = self.width,
+    height = self.height,
+  }
+end
 
 function player:animate()
 
@@ -463,8 +600,15 @@ end
 
 
 function player:draw()
+
+  if game.debug then
+    hitbox = self:hitbox()
+    rect(hitbox.x, hitbox.y, hitbox.x + hitbox.width, hitbox.y + hitbox.height, 8)
+  end
+
   self:animate()
-  spr(self.sprite, self.x, self.y, 2,2, self.flip)
+
+  spr(self.sprite, self.x - self.width/2, self.y - self.height/2, 2,2, self.flip)
 end
 
 
@@ -490,7 +634,7 @@ function alien:create (x, y)
   a.speed = .5
   a._hit = false
   a._die = false
-  a.countdown = 5
+  a.countdown = 3
 
   a.first = 224 --first position in sprite sheet
   a.animations = {
@@ -540,10 +684,18 @@ function alien:update ()
   target.y = elvis.y + 4
 
 
-  if (target.x > self.x) self.x+= self.speed
-  if (target.x < self.x) self.x-= self.speed
-  if (target.y > self.y) self.y+= self.speed
-  if (target.y < self.y) self.y-= self.speed
+  local d = distance(self, target)
+  vx = (target.x - self.x) * self.speed / d
+  vy = (target.y - self.y) * self.speed / d
+
+  self.x += vx
+  self.y += vy
+
+  -- if (target.x > self.x) self.x+= self.speed
+  -- if (target.x < self.x) self.x-= self.speed
+  -- if (target.y > self.y) self.y+= self.speed
+  -- if (target.y < self.y) self.y-= self.speed
+
 
 
   self.flip = (elvis.x > self.x)
@@ -562,6 +714,7 @@ function alien:hit()
   self.countdown=8
 end
 
+
 function alien:hitbox()
   return {
     x = self.x - self.width/2,
@@ -578,16 +731,24 @@ end
 
 function alien:draw()
 
+  if game.debug then
+    hitbox = self:hitbox()
+    rect(hitbox.x, hitbox.y, hitbox.x + hitbox.width, hitbox.y + hitbox.height, 11)
+  end
+
   if (self._hit) then
     graphics.white()
     self._die = true
     self._hit = false
   end
 
-  spr(self.sprite, self.x, self.y, 1, 1, self.flip)
+  -- draw alien
+  spr( self.sprite,
+       self.x - self.width/2,
+       self.y - self.height/2,
+       1, 1, self.flip)
 
   graphics.palette()
-
 
 end
 
@@ -610,10 +771,10 @@ function bullet:create (x, y, direction)
 
   b.x = x
   b.y = y
-  b.radius = 2
+  b.radius = 1
   b.direction = direction
   b.speed = 3
-  b.color = 0
+  b.alternate = false
 
   return b
 end
@@ -656,10 +817,10 @@ end
 
 function bullet:hitbox()
   return {
-    x = self.x - self.radius,
-    y = self.y - self.radius,
-    width  = self.radius*2,
-    height = self.radius*2,
+    x = self.x - 1,
+    y = self.y,
+    width  = 2,
+    height = 2,
   }
 end
 
@@ -668,16 +829,26 @@ function bullet:delete()
 end
 
 function bullet:draw ()
-  --color(8)
-  --circfill(self.x, self.y, self.radius + 1)
+
+  -- debug bullet hitbox
+  if game.debug then
+    hitbox = self:hitbox()
+    rect(hitbox.x, hitbox.y, hitbox.x + hitbox.width, hitbox.y + hitbox.height, 11)
+  end
+
 
   --alt color
-  self.color = (self.color + 1) % 2
-  local c = (self.color == 1) and 14 or 9
+  self.alternate = not self.alternate
 
-  color(c)
-  circfill(self.x, self.y, self.radius)
-  circfill(self.x, self.y, self.radius - 1)
+  --local c = (self.color == 1) and 14 or 9
+  --color(c)
+  --circfill(self.x, self.y, self.radius)
+  --circfill(self.x, self.y, self.radius - 1)
+
+  local sprite = self.alternate and 17 or 33
+  palt(0, true)
+  spr(sprite, self.x-3, self.y-2)
+  palt(0, false)
 end
 
 
@@ -690,18 +861,26 @@ cam = {}
 cam.x = 0
 cam.y = 0
 cam.threeshold = 5
+cam.speed = 2
 
 function cam:update()
 
   local target = {}
 
-  target.x = elvis.x - 64 -- halfscreen
-  target.x = max(target.x, 0 - cam.threeshold) -- left boundary
+  target.x = elvis.x - 64 -- to elvis position
+  --target.x = max(target.x, 0 - cam.threeshold) -- left boundary
 
-  local direction = (cam.x > target.x) and 1 or -1
+  -- level boundaries
+  c = game.level
+
+  target.x = max(target.x, c.limits[1]) --left
+  target.x = min(target.x, c.limits[2] - 128) -- right
+
+  local direction = (cam.x < target.x) and 1 or -1
+  local dx = min(cam.speed, abs(target.x - cam.x))
 
   if abs(cam.x - target.x) > cam.threeshold then
-    cam.x = target.x + cam.threeshold * direction
+    cam.x += dx * direction
   end
 
   camera(cam.x, cam.y)
@@ -710,9 +889,31 @@ end
 
 
 
+
+
 --
 -- utils
 --
+
+debug = {}
+debug.logs = {}
+
+function debug.log (text)
+  add(debug.logs, text)
+end
+
+function debug.show ()
+  color(7)
+  local line = 0
+  for m in all(debug.logs) do
+    print(m, cam.x, cam.y + line * 8)
+    line += 1
+  end
+
+  debug.logs = {}
+end
+
+
 
 text = {}
 
@@ -742,6 +943,21 @@ function collision (o1, o2)
 end
 
 
+
+function distance (p1, p2)
+
+   local dx = (p2.x-p1.x)/64
+   local dy = (p2.y-p1.y)/64
+
+   -- get distance squared
+   local dsq = dx*dx+dy*dy
+
+  -- in case of overflow/wrap
+  if(dsq<0) return 32767.99999
+
+-- scale output back up by 6 bits
+  return sqrt(dsq)*64
+end
 
 
 -- define polygon edges
@@ -783,6 +999,28 @@ function polyfill(pts)
  end
 end
 
+function rrectfill(x0, y0, x1, y1, col, radius)
+  local radius = radius or 0
+
+  local new_x0 = x0 + radius
+  local new_y0 = y0 + radius
+  local new_x1 = x1 - radius
+  local new_y1 = y1 - radius
+
+  rectfill(new_x0, new_y0, new_x1, new_y1, col)
+
+  if radius > 0 then
+    circfill(new_x0, new_y0, radius, col)
+    circfill(new_x1, new_y0, radius, col)
+    circfill(new_x0, new_y1, radius, col)
+    circfill(new_x1, new_y1, radius, col)
+  end
+
+  rectfill(new_x0, y0, new_x1, new_y0, col)
+  rectfill(x0, new_y0, new_x0, new_y1, col)
+  rectfill(new_x1, new_y0, x1, new_y1, col)
+  rectfill(new_x0, new_y1, new_x1, y1, col)
+end
 
 
 
@@ -790,53 +1028,53 @@ end
 
 __gfx__
 00000000cccccccc0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000cccccccc5000050500000050000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00700700cccccccc5500505050000055000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00077000cccccccc5500555550005000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00077000cccccccc0000055550055500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00700700cccccccc0000555500055500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000cccccccc6666000006000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000cccccccc5555006655066506000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000005555500655065506000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000005555550000005506000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000005555550066660006000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000005555550655550006000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000005555550655550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000055500655550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000055500666000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000005500066000000655000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000005550655550000655000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000005500655550000655000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000005506555550660055000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000005506555550655000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000655550055500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000555500055500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000006666000006000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000005555006655066506000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000005555500655065506000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000005555550000005506000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000005555550066660006000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000005555550655550006000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000005555550655550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000055500655550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000055500666000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000005500066000000655000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-ccccccccccccccccccccccccccccccccccccccc0ccccccccccccccccccccccccccccccccccccccccccccccc0ccccccccccccccccccccccccccccccc0cccccccc
-cccccc00c0cccccccccccc00c0ccccccccccc00cccccccccccccccccccccccccccccccccc0ccccccccccc00cccccccccccccccccccccccccccccc00ccccccccc
-cccccc0f0ccccccccccccc0f0cccccccccccc0f0ccccccccccccc0000cccccccccccccc00cccccccccccc0f0ccccccccccccc0000cccccccccccc0f0cccccccc
-ccccccfff99cccccccccccfff99ccccccccccfffccccccccccccc0f0ccccccccccccccc0f0cccccccccccfffccccccccccccc0f0cccccccccccccfffcccccccc
-cccccccff999cccccccccccff999cccccc999cffcccccccccccccfffcccccccccccccccfffccccccccccccffcccccccccccccfffcccccccccccc00ffcccccccc
-ccccc00000999cccccccc00000999ccccc9400000ccccccccc9990ffcccccccccccc9900ffccccccccc900000cccccccccc990ffccccccccccc000000ccccccc
-cccc00000009cccccccc00000009cccccc9000000ccccccccc9000000ccccccccccc90000cccccccccc000000cccccccccc900000ccccccccc00c00000cccccc
-ccc000000000ccccccc000000000cccccc90000000fccccccc00900000ccccccccc990000ccccccccc9000000cccccccccc0000000cccccccc099909c00ccccc
-ccc00c0000c0ccccccc00c0000c0cccccc900000cccccccccc009000c00fccccccc9490000cccccccc90000000fcccccccc00000000fcccccc009999cc0ccfcc
-cccc00f00f0ccccccccc00f00f0cccccccc40f0ccccccccccc90f00cccccccccccc4490000fccccccc44000cccccccccccc9000ccccccccccc90ff44444f4ffc
-ccccc4777cccccccccccc4777cccccccccc4c77cccccccccccc4c77cccccccccccc4cc77cccccccccc4cc77ccccccccccccc476ccccccccccc99f999cccccccc
-cccc4c7777cccccccccc4c7777cccccccccff677ccccccccccc4c677ccccccccccffcc777ccccccccffcc776cccccccccccc4776ccccccccccc999797ccccccc
-cccfcc7cc77ccccccccfcc7cc77ccccccccf76c77ccccccccccff677ccccccccccfcc77c7ccccccccfcc77c67cccccccccccf776ccccccccccccc7cc77cccccc
-ccffc77ccc7cccccccffc77ccc7ccccccccc7ccc7cccccccccc0067cccccccccccccc770cccccccccccc7ccc7cccccccccc0076ccccccccccccc77ccc7cccccc
-ccccc0ccc0ccccccccccc0ccc00cccccccc00ccc0cccccccccc0cc0cccccccccccccc0ccccccccccccc00ccc0cccccccccc0cc0ccccccccccccc0ccc0ccccccc
-ccccc00cc00cccccccccc00cc0ccccccccc0cccc00cccccccccccc00ccccccccccccc00cccccccccccc0cccc00cccccccccccc00cccccccccccc00cc00cccccc
+00000000cccccccc0e80e80000000000500005050000005000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00700700cccccccce88e888000000000550050505000005500000000000000000000000000000000000000000000000000000000000000000000000000000000
+00077000cccccccce888888000000000550055555000500000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00077000cccccccc0888880000000000000005555005550000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00700700cccccccc0088800000000000000055550005550000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000cccccccc0008000000000000666600000600000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000cccccccc0000000000000000555500665506650600000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000555550065506550600000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000110110000000000555555000000550600000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000900001111111000000000555555006666000600000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000009e90001111111000000000555555065555000600000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000900000111110000000000555555065555000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000011100000000000005550065555000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000001000000000000000000005550066600000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000550006600000065500000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000500005050000005000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000e0e0000000000000000000550050505000005500000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000900000000000000000000550055555000500000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000e0e0000000000000000000000005555005550000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000055550005550000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000666600000600000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000555500665506650600000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000555550065506550600000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000555555000000550600000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000555555006666000600000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000555555065555000600000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000555555065555000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000005550065555000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000005550066600000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000550006600000065500000000000000000000000000000000000000000000000000000000000000000000000000000000
+cccccccccccccccccccccccccccccccccccccccc0ccccccccccccccccccccccccccccccccccccccccccccccc0cccccccccccccccccccccccccccccc0cccccccc
+cccccc00c0cccccccccccc00c0cccccccccccc00cccccccccccccccccccccccccccccccccc0ccccccccccc00ccccccccccccccccccccccccccccc00ccccccccc
+cccccc0f0ccccccccccccc0f0ccccccccccccc0f0ccccccccccccc0000cccccccccccccc00cccccccccccc0f0ccccccccccccc0000ccccccccccc0f0cccccccc
+ccccccfff99cccccccccccfff99cccccccccccfffccccccccccccc0f0ccccccccccccccc0f0cccccccccccfffccccccccccccc0f0ccccccccccccfffcccccccc
+cccccccff999cccccccccccff999ccccccc999cffcccccccccccccfffcccccccccccccccfffccccccccccccffcccccccccccccfffccccccccccc00ffcccccccc
+ccccc00000999cccccccc00000999cccccc9400000ccccccccc9990ffcccccccccccc9900ffccccccccc900000cccccccccc990ffcccccccccc000000ccccccc
+cccc00000009cccccccc00000009ccccccc9000000ccccccccc9000000ccccccccccc90000cccccccccc000000cccccccccc900000cccccccc00c00000cccccc
+ccc000000000ccccccc000000000ccccccc90000000fccccccc00900000ccccccccc990000ccccccccc9000000cccccccccc0000000ccccccc099909c00ccccc
+ccc00c0000c0ccccccc00c0000c0ccccccc900000cccccccccc009000c00fccccccc9490000cccccccc90000000fcccccccc00000000fccccc009999cc0ccfcc
+cccc00f00f0ccccccccc00f00f0ccccccccc40f0ccccccccccc90f00cccccccccccc4490000fccccccc44000cccccccccccc9000cccccccccc90ff44444f4ffc
+ccccc4777cccccccccccc4777ccccccccccc4c77cccccccccccc4c77cccccccccccc4cc77cccccccccc4cc77ccccccccccccc476cccccccccc99f999cccccccc
+cccc4c7777cccccccccc4c7777ccccccccccff677ccccccccccc4c677ccccccccccffcc777ccccccccffcc776cccccccccccc4776cccccccccc999797ccccccc
+cccfcc7cc77ccccccccfcc7cc77cccccccccf76c77ccccccccccff677ccccccccccfcc77c7ccccccccfcc77c67cccccccccccf776cccccccccccc7cc77cccccc
+ccffc77ccc7cccccccffc77ccc7cccccccccc7ccc7cccccccccc0067cccccccccccccc770cccccccccccc7ccc7cccccccccc0076cccccccccccc77ccc7cccccc
+ccccc0ccc0ccccccccccc0ccc00ccccccccc00ccc0cccccccccc0cc0cccccccccccccc0ccccccccccccc00ccc0cccccccccc0cc0cccccccccccc0ccc0ccccccc
+ccccc00cc00cccccccccc00cc0cccccccccc0cccc00cccccccccccc00ccccccccccccc00cccccccccccc0cccc00cccccccccccc00ccccccccccc00cc00cccccc
 ccccccc0ccccccccccccccc0ccccccccccccccccccccccccccccccccccccccccccccccc0cccccccccccccccccccccccccccccccccccccccccccccccccfcccccc
 ccccc00cccccccccccccc00cccccccccccccc000cccccccccccccccc0cccccccccccc00cccccccccccccc00c0ccccccccccccccccccccccccccc0cccffcccccc
 ccccc0f0ccccccccccccc0f0ccccccccccccc0ff0ccccccccccccc00ccccccccccccc0f0ccccffccccccc0f0ccccffcccccccc0000cccccccccc0cccc4cccccc
@@ -909,6 +1147,14 @@ c9494eecc9494eec7079707c00000000000000000000000000000000000000000000000000000000
 998899ee998899ee999999ee00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 cecece8ccececceccecececc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 8c8cc8c8c8c88c88c8c8c8cc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+cccccccc000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+55cc55cc000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+567665cc000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+c06606cc000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+c656665c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+c5e5656c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+cc666665000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+cc6c656c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __label__
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -1052,10 +1298,10 @@ __map__
 0101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0203020302030203020302030203020302030203020302030203020302030203020302030203020302030203020302030203020302030203020302030203020302030203020300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-1213121312131213121312131213121312131213121312131213121312131213121312131213121312131213121312131213121312131213121312131213121312131213121300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-2223222322232223222322232223222322232223222322232223222322232223222322232223222322232223222322232223222322232223222322232223222322232223222300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-3233323332333233323332333233323332333233323332333233323332333233323332333233323332333233323332333233323332333233323332333233323332333233323300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0405040504050405040504050405040504050405040504050405040504050405040504050405040504050405040504050405040504050405040504050405040504050405040500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1415141514151415141514151415141514151415141514151415141514151415141514151415141514151415141514151415141514151415141514151415141514151415141500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __sfx__
 001000001d05000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
