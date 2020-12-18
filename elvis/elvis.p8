@@ -514,18 +514,20 @@ end
 levels = {}
 level = {}
 level.__index = level
+--level.width =
 
--- function level:new (object)
---   object = object or {}
---   setmetatable(object, self)
---   self.__index = self
+function level:new (object)
+  object = object or {}
+  setmetatable(object, self)
+  self.__index = self
 
---   add(levels, object)
---   return object
--- end
+  -- level informations
+  object.number = #levels
+  object.limits = {object.number * 128, object.number * 128 + 128}
 
-
-
+  add(levels, object)
+  return object
+end
 
 
 
@@ -543,12 +545,15 @@ function level:create (n, limits, init, update, draw)
   l.update = update
   l.draw = draw
 
-
   return l
 end
 
-function level:next()
+function level:init() end
+function level:update() end
+function level:draw() end
 
+
+function level:next()
   -- checkpoint to the next level
   if not self.checkpoint then
     self.checkpoint = self.limits[2] + 64
@@ -563,65 +568,61 @@ function level:next()
 end
 
 
--- first level
-add(levels, level:create(
-  0,
-  {0, 128},
-
-  -- init
-  function (self)
-  end,
-
-  -- update
-  function (self)
-    self:next()
-  end,
-
-  -- draw
-  function (self)
-    graphics.title()
-    graphics.tip("rock this way ➡️", 0, 12)
-  end
-))
+--
+-- levels & gameplay
+--
 
 
+--
+-- title screen
+--
 
+level0 = level:new()
+
+-- update
+level0.update = function (self)
+  self:next()
+end
+
+-- draw
+level0.draw = function (self)
+  graphics.title()
+  graphics.tip("rock this way ➡️", 0, 12)
+end
 
 
 
-add(levels, level:create(
-  1,
-  {128, 256},
+--
+-- level 1 : tutorial
+--
 
-  -- init
-  function (self)
+level1 = level:new()
+
+level1.init = function (self)
     self.tutorial = true
     self.message = ""
-  end,
+end
 
-  -- update
-  function (self)
+level1.update = function (self)
 
-    if self.tutorial then
-      if (elvis.animation != elvis.animations.ready) self.message = "press 🅾️ or c to get ready"
-      if (elvis.animation == elvis.animations.ready) self.message = "...and use direction to aim"
-    end
-
-    if (guitar.playing) then
-      self.message = "you got it, elvis! ➡️"
-      self.tutorial = false
-      game.infos = true
-    end
-
-    if (not self.tutorial) self:next()
-
-  end,
-
-  -- draw
-  function (self)
-    graphics.tip(self.message, cam.x)
+  if self.tutorial then
+    if (elvis.animation != elvis.animations.ready) self.message = "press 🅾️ or c to get ready"
+    if (elvis.animation == elvis.animations.ready) self.message = "...and use direction to aim"
   end
-))
+
+  if (guitar.playing) then
+    self.message = "you got it, elvis! ➡️"
+    self.tutorial = false
+    game.infos = true
+  end
+
+  if (not self.tutorial) self:next()
+end
+
+-- draw
+level1.draw = function (self)
+  graphics.tip(self.message, cam.x)
+end
 
 
 
