@@ -21,8 +21,8 @@ function _init()
   game.level = levels[1]
 
   -- new hero
-  elvis = player:create(62,104)
-  rachel = dog:create(elvis.x + 100, elvis.y+4)
+  elvis = hero:new({ x = 62, y = 104})
+  rachel = dog:new({ x = elvis.x + 100, y = elvis.y+4})
 
 
   music(0) -- go music!
@@ -102,6 +102,412 @@ game.lives = 3
 
 
 --
+-- entities
+--
+
+entity = {}
+entity.x = 0
+entity.y = 0
+entity.width = 8
+entity.height = 8
+entity.flip = false
+
+entity.animation = {} -- current animation
+entity.animations = {} -- all animations
+
+entity.sprite_first = 0 -- first sprite number in spritesheet
+entity.sprite_size = 1
+
+-- get the correct sprite according to animation
+function entity:get_sprite()
+
+  local sprite
+
+  self.previous_animation = self.previous_animation or {}
+  self.step = self.step or 1 -- step on the current animation
+
+  if (self.animation != self.previous_animation) then
+    self.step = 1 -- new animation ? restart from beginning
+    self.previous_animation = self.animation
+  end
+
+  -- get sprite position
+  sprite = self.sprite_first + (self.animation[self.step] * self.sprite_size)
+
+  -- for hero & double size sprite, skip a line for each new row
+  sprite = sprite + ((self.animation[self.step]  < 8) and 0 or 16) + --saut de ligne
+          ((self.animation[self.step]  < 16) and 0 or 16) --saut de ligne
+
+  if (tick % animate_each == 0) self.step = (self.step % #self.animation) + 1
+
+  return sprite
+end
+
+
+-- get default hitbox
+function entity:hitbox()
+  return {
+    x = self.x - self.width/2,
+    y = self.y - self.height/2,
+    width  = self.width,
+    height = self.height,
+  }
+end
+
+
+-- draw the sprite
+function entity:draw()
+
+  -- show hitbox
+  if game.debug then
+    hitbox = self:hitbox()
+    rect(hitbox.x, hitbox.y, hitbox.x + hitbox.width, hitbox.y + hitbox.height, 11)
+  end
+
+  spr( self:get_sprite(),
+       self.x - self.width/2,
+       self.y - self.height/2,
+       self.sprite_size, self.sprite_size,
+       self.flip)
+end
+
+
+--
+-- hero
+--
+
+hero = {}
+hero.__index = hero
+setmetatable(hero, {__index = entity})
+
+hero.width = 12
+hero.height = 16
+hero.speed = 2
+hero.hard = false
+
+hero.sprite_first = 64 --first position in sprite sheet
+hero.sprite_size = 2
+
+hero.animations = {
+  idle = {0,1},
+  walk = {2,3,4,5,6,4},
+  ready = {7,8},
+  right = {9,10,11},
+  diagonal = {12,13,14},
+  up = {15,16,17},
+}
+hero.animation = hero.animations.idle
+
+
+
+function hero:new (object)
+  object = object or {}
+  setmetatable(object, self)
+  self.__index = self
+  return object
+end
+
+
+function hero:update()
+
+  -- check aliens collisions
+  for a in all(aliens) do
+    if collision(self:hitbox(), a:hitbox()) then
+      game.lives -= 1
+      a:delete()
+    end
+  end
+
+  local special = controls:special()
+  elvis.animation = elvis.animations.idle
+  elvis.hard = false
+
+  if controls:ready() then
+    elvis.animation = elvis.animations.ready
+
+    if (controls:left() or controls:right()) then elvis.animation = elvis.animations.right end
+    if (controls:up()) then elvis.animation = elvis.animations.up end
+    if controls:diagonal() then elvis.animation = elvis.animations.diagonal end
+
+    local direction = controls:direction()
+    if (direction > 0 and delay_shoot > 10) then
+      add(bullets, bullet:create(elvis.x, elvis.y, direction))
+      delay_shoot = 0
+    end
+
+
+  -- moves
+  else
+
+    if (btn(0) or btn(1)) elvis.animation = elvis.animations.walk
+
+    --moves
+    local vx = 0
+    if (controls:left())  vx = -elvis.speed
+    if (controls:right()) vx = elvis.speed
+
+    -- level boundaries
+    local hitbox = elvis:hitbox()
+    if (hitbox.x + vx < game.level.limits[1]) vx = 0 -- left
+    if (hitbox.x + hitbox.width + vx > game.level.limits[2]) vx = 0 -- right
+    --posx = min(self.x + self.width/2 + posx, game.level.limits[2]) -- left
+
+    -- move
+    self.x += vx;
+  end
+
+  -- flip sprite
+  if (btn(0)) elvis.flip = true
+  if (btn(1)) elvis.flip = false
+
+end
+
+
+--
+-- dog
+--
+
+dog = {}
+dog.__index = dog
+setmetatable(dog, {__index = entity})
+
+dog.speed = 1
+dog.sprite_first = 240
+dog.sprite_size = 1
+
+dog.animations = {
+  idle = {0,1},
+  running = {0,2}
+}
+
+dog.animation = dog.animations.idle
+dog.show = true
+
+
+function dog:new (object)
+  object = object or {}
+  setmetatable(object, self)
+  self.__index = self
+  return object
+end
+
+function dog:update()
+  local target
+
+  self.animation = self.animations.idle
+
+  if ( abs(self.x - elvis.x) > 16) then
+    self.animation = self.animations.running
+    self.flip = (elvis.x > self.x)
+    self.x += (self.flip) and self.speed or -self.speed
+  end
+end
+
+function dog:draw ()
+  if (not self.show) return
+  entity.draw(self) -- parent method
+end
+
+
+---
+--- aliens
+---
+
+aliens = {} -- all aliens
+alien = {}
+alien.__index = alien
+setmetatable(alien, {__index = entity})
+
+alien.speed = .5
+alien._hit = false
+alien._die = false
+alien.countdown = 3
+
+alien.sprite_first = 224 --first position in sprite sheet
+alien.animations = {
+  fly = {0,1},
+  die = {2}
+}
+alien.animation = alien.animations.fly
+
+
+
+
+function alien:new (object)
+  object = object or {}
+  setmetatable(object, self)
+  self.__index = self
+  return object
+end
+
+-- alias for constructor
+function alien:create (x, y)
+  return self:new({x = x, y = y})
+end
+
+
+function alien:update ()
+
+  local target = {}
+  target.x = elvis.x + 4
+  target.y = elvis.y + 4
+
+
+  local d = distance(self, target)
+  vx = (target.x - self.x) * self.speed / d
+  vy = (target.y - self.y) * self.speed / d
+
+  self.x += vx
+  self.y += vy
+
+  -- if (target.x > self.x) self.x+= self.speed
+  -- if (target.x < self.x) self.x-= self.speed
+  -- if (target.y > self.y) self.y+= self.speed
+  -- if (target.y < self.y) self.y-= self.speed
+
+  self.flip = (elvis.x > self.x)
+
+
+  if (self._die) self.countdown -= 1
+  if (self.countdown == 0) self:delete()
+
+end
+
+function alien:hit()
+  self._hit = true
+  self.animation = self.animations.die
+  self.countdown=8
+end
+
+function alien:delete()
+  del(aliens, self)
+end
+
+
+function alien:draw()
+
+  if (self._hit) then
+    graphics.white()
+    self._die = true
+    self._hit = false
+  end
+
+  -- draw alien
+  entity.draw(self)
+
+  graphics.palette()
+
+end
+
+
+
+--
+-- bullet
+--
+
+bullets = {} -- all bullets
+bullet = {}
+bullet.__index = bullet
+setmetatable(alien, {__index = entity})
+
+
+bullet.radius = 1
+bullet.direction = direction
+bullet.speed = 3
+bullet.alternate = false
+
+
+function bullet:new (object)
+  object = object or {}
+  setmetatable(object, self)
+  self.__index = self
+  return object
+end
+
+
+function bullet:create (x, y, direction)
+  return self:new({x = x, y = y, direction = direction})
+end
+
+
+function bullet:update()
+
+  local x,y = 0,0
+
+  if (1 == self.direction) x -= self.speed
+  if (2 == self.direction) x -= self.speed y -= self.speed
+  if (3 == self.direction) y -= self.speed
+  if (4 == self.direction) x += self.speed y -= self.speed
+  if (5 == self.direction) x += self.speed
+
+  -- normalize diagonal moves
+  if (abs(x) + abs(y) > self.speed) then
+    local dist = sqrt(2)
+    x /= dist
+    y /= dist
+  end
+
+  -- move
+  self.x += x
+  self.y += y
+
+  self:collision()
+
+end
+
+
+function bullet:collision ()
+  for a in all(aliens) do
+    if collision(self:hitbox(), a:hitbox()) then
+      a:hit()
+      self:delete()
+    end
+  end
+end
+
+
+function bullet:hitbox()
+  return {
+    x = self.x - 1,
+    y = self.y,
+    width  = 2,
+    height = 2,
+  }
+end
+
+function bullet:delete()
+  del(bullets, self)
+end
+
+function bullet:draw ()
+
+  -- debug bullet hitbox
+  if game.debug then
+    hitbox = self:hitbox()
+    rect(hitbox.x, hitbox.y, hitbox.x + hitbox.width, hitbox.y + hitbox.height, 11)
+  end
+
+  --alt color
+  self.alternate = not self.alternate
+
+  --local c = (self.color == 1) and 14 or 9
+  --color(c)
+  --circfill(self.x, self.y, self.radius)
+  --circfill(self.x, self.y, self.radius - 1)
+
+  local sprite = self.alternate and 17 or 33
+  palt(0, true)
+  spr(sprite, self.x-3, self.y-2)
+  palt(0, false)
+end
+
+
+
+
+
+
+
+--
 -- levels
 --
 
@@ -109,8 +515,21 @@ levels = {}
 level = {}
 level.__index = level
 
-function level:create (n, limits, init, update, draw)
+-- function level:new (object)
+--   object = object or {}
+--   setmetatable(object, self)
+--   self.__index = self
 
+--   add(levels, object)
+--   return object
+-- end
+
+
+
+
+
+
+function level:create (n, limits, init, update, draw)
 
   l = {}
   setmetatable(l, level)
@@ -348,89 +767,7 @@ add(levels, level:create(
 
 
 
---
--- dog
---
 
-dog = {}
-dog.__index = dog
-
-function dog:create (x, y)
-
-  d= {}
-  setmetatable(d, dog)
-
-  d.x = x
-  d.y = y
-  d.first = 240
-  d.speed = 1
-  d.width = 8
-  d.height = 8
-  d.flip = false
-  d.animations = {
-    idle = {0,1},
-    running = {0,2}
-  }
-
-  d.animation = d.animations.idle
-
-  d.last_animation = {}
-  d.sprite = 0
-  d.step = 0
-  d.show = false
-
-  return d
-end
-
-
-function dog:update()
-  local target
-
-  self.animation = self.animations.idle
-
-  if ( abs(self.x - elvis.x) > 16) then
-    self.animation = self.animations.running
-    self.flip = (elvis.x > self.x)
-    self.x += (self.flip) and self.speed or -self.speed
-  end
-
-  self:animate()
-
-end
-
-function dog:draw ()
-  -- draw alien
-  if (not self.show) return
-  spr( self.sprite,
-       self.x - self.width/2,
-       self.y - self.height/2,
-       1, 1, self.flip)
-end
-
-function dog:animate ()
-  local sprite
-
-  if (self.animation != self.last_animation) then
-    self.step = 1
-    self.last_animation = self.animation
-  end
-
-  sprite = self.animation[self.step]
-
-  -- sprite = self.first + --page
-  --         (sprite) * 2 + --numero de sprite
-  --         ((sprite < 8) and 0 or 16) + --saut de ligne
-  --         ((sprite < 16) and 0 or 16) --saut de ligne
-
-  sprite = self.first + --page
-          (sprite)--numero de sprite
-          -- + ((sprite < 8) and 0 or 16) + --saut de ligne
-          --((sprite < 16) and 0 or 16) --saut de ligne
-
-  if (tick % animate_each == 0) self.step = (self.step % #self.animation) + 1
-
-  self.sprite = sprite
-end
 
 
 
@@ -445,9 +782,6 @@ function dialog:create ()
 
   d = {}
   setmetatable(d, dialog)
-
-
-
   return d
 end
 
@@ -652,397 +986,8 @@ end
 
 
 
---
--- player
---
 
-player = {}
-player.__index = player
 
-elvis_msg = {
-  "oh yeah",
-  "that's right",
-  "come on",
-}
-
-
-function player:create (x, y)
-
-  p = {}
-  setmetatable(p, player)
-
-  p.x = x
-  p.y = y
-  p.width = 12
-  p.height = 16
-
-
-  p.flip = false
-  p.animation = {}
-  p.speed = 2
-  p.hard = false
-
-  p.first = 64 --first position in sprite sheet
-  p.animations = {
-    idle = {0,1},
-    walk = {2,3,4,5,6,4},
-    ready = {7,8},
-    right = {9,10,11},
-    diagonal = {12,13,14},
-    up = {15,16,17},
-  }
-
-  p.animation = p.animations.idle
-  p.last_animation = {}
-  p.sprite = 0
-  p.step = 0
-
-  return p
-end
-
-
-function player:update()
-
-
-  -- check aliens collisions
-  for a in all(aliens) do
-    if collision(self:hitbox(), a:hitbox()) then
-      game.lives -= 1
-      a:delete()
-    end
-  end
-
-
-
-
-  local special = controls:special()
-  elvis.animation = elvis.animations.idle
-  elvis.hard = false
-
-  if controls:ready() then
-    elvis.animation = elvis.animations.ready
-
-    if (controls:left() or controls:right()) then elvis.animation = elvis.animations.right end
-    if (controls:up()) then elvis.animation = elvis.animations.up end
-    if controls:diagonal() then elvis.animation = elvis.animations.diagonal end
-
-    local direction = controls:direction()
-    if (direction > 0 and delay_shoot > 10) then
-      add(bullets, bullet:create(elvis.x, elvis.y, direction))
-      delay_shoot = 0
-    end
-
-
-  -- moves
-  else
-
-    if (btn(0) or btn(1)) elvis.animation = elvis.animations.walk
-
-    --moves
-    local vx = 0
-    if (controls:left())  vx = -elvis.speed
-    if (controls:right()) vx = elvis.speed
-
-    -- level boundaries
-    local hitbox = elvis:hitbox()
-    if (hitbox.x + vx < game.level.limits[1]) vx = 0 -- left
-    if (hitbox.x + hitbox.width + vx > game.level.limits[2]) vx = 0 -- right
-    --posx = min(self.x + self.width/2 + posx, game.level.limits[2]) -- left
-
-    -- move
-    self.x += vx;
-  end
-
-
-  -- flip sprite
-  if (btn(0)) elvis.flip = true
-  if (btn(1)) elvis.flip = false
-
-end
-
-function player:hitbox()
-  return {
-    x = self.x - self.width/2,
-    y = self.y - self.height/2,
-    width  = self.width,
-    height = self.height,
-  }
-end
-
-function player:animate()
-
-  local sprite
-
-  if (self.animation != self.last_animation) then
-    self.step = 1
-    self.last_animation = self.animation
-  end
-
-  sprite = self.animation[self.step]
-
-  sprite = self.first + --page
-          (sprite) * 2 + --numero de sprite
-          ((sprite < 8) and 0 or 16) + --saut de ligne
-          ((sprite < 16) and 0 or 16) --saut de ligne
-
-
-  if(tick % animate_each == 0) self.step = (self.step % #self.animation) + 1
-
-  self.sprite = sprite
-end
-
-
-function player:draw()
-
-  if game.debug then
-    hitbox = self:hitbox()
-    rect(hitbox.x, hitbox.y, hitbox.x + hitbox.width, hitbox.y + hitbox.height, 8)
-  end
-
-  self:animate()
-
-  spr(self.sprite, self.x - self.width/2, self.y - self.height/2, 2,2, self.flip)
-end
-
-
-
----
---- aliens
----
-
-aliens = {}
-alien = {}
-alien.__index = alien
-
-function alien:create (x, y)
-
-  a = {}
-  setmetatable(a,alien)
-
-  a.x = x
-  a.y = y
-  a.flip = false
-  a.width = 8
-  a.height = 8
-  a.speed = .5
-  a._hit = false
-  a._die = false
-  a.countdown = 3
-
-  a.first = 224 --first position in sprite sheet
-  a.animations = {
-    fly = {0,1},
-    die = {2}
-  }
-
-  a.animation = a.animations.fly
-  a.last_animation = {}
-  a.sprite = 0
-  a.step = 0
-
-  return a
-end
-
-function alien:animate()
-
-  local sprite
-
-  if (self.animation != self.last_animation) then
-    self.step = 1
-    self.last_animation = self.animation
-  end
-
-  sprite = self.animation[self.step]
-
-  -- sprite = self.first + --page
-  --         (sprite) * 2 + --numero de sprite
-  --         ((sprite < 8) and 0 or 16) + --saut de ligne
-  --         ((sprite < 16) and 0 or 16) --saut de ligne
-
-  sprite = self.first + --page
-          (sprite)--numero de sprite
-          -- + ((sprite < 8) and 0 or 16) + --saut de ligne
-          --((sprite < 16) and 0 or 16) --saut de ligne
-
-  if (tick % animate_each == 0) self.step = (self.step % #self.animation) + 1
-
-  self.sprite = sprite
-end
-
-
-function alien:update ()
-
-  local target = {}
-  target.x = elvis.x + 4
-  target.y = elvis.y + 4
-
-
-  local d = distance(self, target)
-  vx = (target.x - self.x) * self.speed / d
-  vy = (target.y - self.y) * self.speed / d
-
-  self.x += vx
-  self.y += vy
-
-  -- if (target.x > self.x) self.x+= self.speed
-  -- if (target.x < self.x) self.x-= self.speed
-  -- if (target.y > self.y) self.y+= self.speed
-  -- if (target.y < self.y) self.y-= self.speed
-
-
-
-  self.flip = (elvis.x > self.x)
-
-  -- define current sprite
-  self:animate()
-
-  if (self._die) self.countdown -= 1
-  if (self.countdown == 0) self:delete()
-
-end
-
-function alien:hit()
-  self._hit = true
-  self.animation = self.animations.die
-  self.countdown=8
-end
-
-
-function alien:hitbox()
-  return {
-    x = self.x - self.width/2,
-    y = self.y - self.height/2,
-    width  = self.width,
-    height = self.height,
-  }
-end
-
-function alien:delete()
-  del(aliens, self)
-end
-
-
-function alien:draw()
-
-  if game.debug then
-    hitbox = self:hitbox()
-    rect(hitbox.x, hitbox.y, hitbox.x + hitbox.width, hitbox.y + hitbox.height, 11)
-  end
-
-  if (self._hit) then
-    graphics.white()
-    self._die = true
-    self._hit = false
-  end
-
-  -- draw alien
-  spr( self.sprite,
-       self.x - self.width/2,
-       self.y - self.height/2,
-       1, 1, self.flip)
-
-  graphics.palette()
-
-end
-
-
-
---
--- bullet
---
-
-bullets = {} -- all bullets
-bullet = {}
-bullet.__index = bullet
-
-
-
-function bullet:create (x, y, direction)
-
-  b = {}
-  setmetatable(b,bullet)
-
-  b.x = x
-  b.y = y
-  b.radius = 1
-  b.direction = direction
-  b.speed = 3
-  b.alternate = false
-
-  return b
-end
-
-function bullet:update()
-
-  local x,y = 0,0
-
-  if (1 == self.direction) x -= self.speed
-  if (2 == self.direction) x -= self.speed y -= self.speed
-  if (3 == self.direction) y -= self.speed
-  if (4 == self.direction) x += self.speed y -= self.speed
-  if (5 == self.direction) x += self.speed
-
-  -- normalize diagonal moves
-  if (abs(x) + abs(y) > self.speed) then
-    local dist = sqrt(2)
-    x /= dist
-    y /= dist
-  end
-
-  -- move
-  self.x += x
-  self.y += y
-
-  self:collision()
-
-end
-
-
-function bullet:collision ()
-  for a in all(aliens) do
-    if collision(self:hitbox(), a:hitbox()) then
-      a:hit()
-      self:delete()
-    end
-  end
-end
-
-
-function bullet:hitbox()
-  return {
-    x = self.x - 1,
-    y = self.y,
-    width  = 2,
-    height = 2,
-  }
-end
-
-function bullet:delete()
-  del(bullets, self)
-end
-
-function bullet:draw ()
-
-  -- debug bullet hitbox
-  if game.debug then
-    hitbox = self:hitbox()
-    rect(hitbox.x, hitbox.y, hitbox.x + hitbox.width, hitbox.y + hitbox.height, 11)
-  end
-
-
-  --alt color
-  self.alternate = not self.alternate
-
-  --local c = (self.color == 1) and 14 or 9
-  --color(c)
-  --circfill(self.x, self.y, self.radius)
-  --circfill(self.x, self.y, self.radius - 1)
-
-  local sprite = self.alternate and 17 or 33
-  palt(0, true)
-  spr(sprite, self.x-3, self.y-2)
-  palt(0, false)
-end
 
 
 
