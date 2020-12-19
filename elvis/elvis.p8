@@ -12,11 +12,6 @@ function _init()
 
   graphics.palette()
 
-  poke(0x5f42, 0b0000) --distort
-  poke(0x5f41, 0b0100) --echo
-  poke(0x5f43, 0b1111) --lowpass
-
-
   -- first level
   game.level = levels[1]
 
@@ -28,13 +23,9 @@ function _init()
 end
 
 
-delay_shoot = 0
-
 function _update()
 
   tick = (tick + 1) % max_tick
-  delay_shoot += 1
-
 
   if (not game.pause) then
     elvis:update()
@@ -179,6 +170,9 @@ hero.height = 16
 hero.speed = 2
 hero.hard = false
 
+hero.delay_shoot = 10
+hero.shoot_countdown = 0
+
 hero.sprite_first = 64 --first position in sprite sheet
 hero.sprite_size = 2
 
@@ -201,6 +195,7 @@ function hero:new (object)
   return object
 end
 
+
 function hero:playing ()
   return controls:ready() and
         (controls:left() or controls:right() or controls:up() or controls:diagonal())
@@ -208,6 +203,14 @@ end
 
 
 function hero:update()
+
+  -- for testing purpose
+  --elvis.hard = controls:jump()
+
+  -- delay between shoots
+  self.delay_shoot = elvis.hard and 3 or 10
+  self.shoot_countdown -= 1
+  self.shoot_countdown = max(0, self.shoot_countdown)
 
   -- check aliens collisions
   for a in all(aliens) do
@@ -219,7 +222,7 @@ function hero:update()
 
   local special = controls:special()
   elvis.animation = elvis.animations.idle
-  elvis.hard = false
+  --elvis.hard = false
 
   if controls:ready() then
     elvis.animation = elvis.animations.ready
@@ -228,10 +231,13 @@ function hero:update()
     if (controls:up()) then elvis.animation = elvis.animations.up end
     if controls:diagonal() then elvis.animation = elvis.animations.diagonal end
 
+
+    -- shoot
     local direction = controls:direction()
-    if (direction > 0 and delay_shoot > 10) then
-      add(bullets, bullet:create(elvis.x, elvis.y, direction))
-      delay_shoot = 0
+    if (direction > 0 and self.shoot_countdown == 0) then
+      debug.log(self.shoot_countdown)
+      add(bullets, bullet:create(self.x, self.y, direction))
+      self.shoot_countdown = self.delay_shoot
     end
 
 
@@ -477,7 +483,8 @@ end
 
 function bullet:collision ()
   for a in all(aliens) do
-    if collision(self:hitbox(), a:hitbox()) then
+
+    if collision(self:hitbox(), a:hitbox()) and not a._die then
       a:hit()
       self:delete()
     end
@@ -587,115 +594,6 @@ end
 
 
 --
--- level 4 : special move
---
-
-level4 = level:new()
-
-level4.init = function (self)
-  self.dialog = nil
-
-  local ennemies = {
-    {1, 100}, {1, 120}, {1, 140}, {1, 160}, {1, 180},
-    {2, 110}, {2, 130}, {2, 150}, {2, 170}, {2, 190},
-    {3, 120}, {3, 140}, {3, 160}, {3, 180}, {3, 200},
-    {4, 130}, {4, 150}, {4, 170}, {4, 190}, {4, 210},
-    {5, 140}, {5, 160}, {5, 180}, {5, 200}, {5, 200},
-  }
-
-  for e in all(ennemies) do
-    alien:new(e[1], e[2])
-  end
-
-  --elvis.animation = elvis.animations.idle
-  --game.pause = true
-end
-
-
-level4.update = function (self)
-
-  -- initalize step
-  self.step = self.step or 1
-
-  if (self.step == 1) then
-    -- check if aliens are close
-    for a in all(aliens) do
-      if (distance(elvis, a) < 40) then
-          self.step += 1
-          return
-        end
-    end
-  end
-
-  if (self.step == 2) then
-
-    elvis.animation = elvis.animations.ready
-    elvis.flip = false
-
-    -- stop music and movements
-    music(-1)
-    game.pause = true
-
-    rachel.animation = rachel.animations.running
-    rachel.x = elvis.x + 100
-    rachel.show = true
-
-    self.step += 1 -- only once
-    return
-  end
-
-  -- rachel comes in
-  if (self.step == 3) then
-    if (abs(rachel.x - elvis.x) < 20) self.step += 1
-  end
-
-  -- dialog
-  if (self.step == 4) then
-    self.dialog = dialog:new ("elvis, you good?\nyou look tense!", {speaker = 14})
-    self.step += 1
-    return
-  end
-
-  if (self.step == 5) then
-    if (self.dialog.ended) self.step += 1
-  end
-
-  -- dialog
-  if (self.step == 6) then
-    self.dialog = dialog:new ("...", {speaker = 46})
-    self.step += 1
-    return
-  end
-
-  if (self.step == 7) then
-   -- if (self.dialog.ended) self.step += 1
-  end
-
-  -- dialog
-  if (self.step == 8) then
-    self.dialog = dialog:new ("maybe i can help.", {speaker = 14})
-    self.step += 1
-    return
-  end
-
-  if (self.step == 9) then
-    if (self.dialog.ended) self.step += 1
-  end
-
-
-
-end
-
-
-level4.draw = function (self)
-  if (self.dialog != nil) self.dialog:draw()
-end
-
-
-
-
-
---
 -- level 1 : tutorial
 --
 
@@ -802,6 +700,113 @@ end
 
 
 
+--
+-- level 4 : special move
+--
+
+level4 = level:new()
+
+level4.init = function (self)
+  self.dialog = nil
+  self.message = ""
+
+  local ennemies = {
+    {1, 100}, {1, 120}, {1, 140}, {1, 160}, {1, 180},
+    {2, 110}, {2, 130}, {2, 150}, {2, 170}, {2, 190},
+    {3, 120}, {3, 140}, {3, 160}, {3, 180}, {3, 200},
+    {4, 130}, {4, 150}, {4, 170}, {4, 190}, {4, 210},
+    {5, 140}, {5, 160}, {5, 180}, {5, 200}, {5, 200},
+  }
+
+  for e in all(ennemies) do
+    alien:new(e[1], e[2])
+  end
+
+  --elvis.animation = elvis.animations.idle
+  --game.pause = true
+end
+
+
+
+level4.update = function (self)
+
+  -- initalize step
+  self.step = self.step or 1
+
+  if (self.step == 1) then
+    -- check if aliens are close
+    for a in all(aliens) do
+      if (distance(elvis, a) < 50) then
+          self.step += 1
+          return
+        end
+    end
+  end
+
+  if (self.step == 2) then
+
+    elvis.animation = elvis.animations.ready
+    elvis.flip = false
+
+    -- stop music and movements
+    music(-1)
+    sfx(-1)
+    game.pause = true
+
+    rachel.animation = rachel.animations.running
+    rachel.x = elvis.x + 100
+    rachel.show = true
+
+    self.step += 1 -- only once
+    return
+  end
+
+  -- rachel comes in
+  if (self.step == 3) then
+    if (abs(rachel.x - elvis.x) < 20) self.step += 1
+  end
+
+  -- dialog
+  if (self.step == 4) then
+    self.dialog = dialog:new ({
+      {text = "elvis, you good?\nyou look tense!", character = dialog.characters.rachel},
+      {text = "...", character = dialog.characters.elvis},
+      {text = "let me help you", character = dialog.characters.rachel},
+      {text = "let's try this \n🅾️ + ⬆️⬆️⬇️⬇️⬅️➡️⬅️➡️\nto go beast mode", character = dialog.characters.rachel, mode = 1},
+      {text = "maybe you should write\n that down somewhere", character = dialog.characters.rachel},
+      {text = "ok let's go!", character = dialog.characters.rachel},
+    })
+    self.step += 1
+    return
+  end
+
+  if (self.step == 5) then
+    if (self.dialog.ended) then
+      self.step += 1
+      elvis.hard = true
+      self.dialog = nil
+      music(2)
+      game.pause = false
+    end
+  end
+
+
+  if (self.step == 6) and (#aliens == 0) then
+    elvis.hard = false
+    self:next()
+    self.message = "that was an wild ➡️"
+  end
+
+
+end
+
+
+
+level4.draw = function (self)
+  if (self.dialog != nil) self.dialog:draw()
+    graphics.tip(self.message, cam.x)
+end
+
 
 
 
@@ -812,18 +817,24 @@ end
 dialog = {}
 
 
-dialog.text = ""
+dialog.lines = {}
 dialog.ended = false
 dialog.display = ""
 dialog.animate_each = 3
-dialog.speaker = 46 -- 14 / 46-- speaker sprite
 
-function dialog:new (text, object)
+dialog.speaker = 46
+dialog.characters = { -- character sprites
+  elvis = 46,
+  rachel = 14,
+}
+
+function dialog:new (steps, object)
   object = object or {}
   setmetatable(object, self)
   self.__index = self
 
-  self.text = text
+  --self.steps = (steps ~= "table") and steps or {steps}
+  self.steps = steps
   self.ended = false
 
   return object
@@ -832,7 +843,16 @@ end
 
 function dialog:draw ()
 
-  local lines = count_lines(self.text)
+  -- dialog is ended
+  if (#self.steps == 0) then
+    self.ended = true
+    return
+  end
+
+  local text = self.steps[1].text
+  local character = self.steps[1].character
+  local lines = count_lines(text)
+
 
   local height = (lines + 1) * 7 + 8
   rrectfill(cam.x + 5, cam.y + 5, cam.x + 128 - 5, cam.y + height + 5, 1, 3)
@@ -840,21 +860,24 @@ function dialog:draw ()
 
   palt(12, false)
   palt(11, true)
-  spr(self.speaker, cam.x + 104, 10, 2, 2)
+  spr(character, cam.x + 104, 10, 2, 2)
 
   -- add a letter
   if (tick % self.animate_each == 0) then
-    self.display = sub(self.text, 1, #self.display + 1)
+    self.display = sub(text, 1, #self.display + 1)
   end
 
+  -- display text letter by letter
   print(self.display, cam.x + 10, cam.y + 10, 1)
 
-  if (#self.display == #self.text) then
+  if (#self.display == #text) then
     print("press ❎", cam.x + 10, height - 4, 12)
+
+    if (controls:jump()) then
+      deli(self.steps, 1)
+      self.display = ""
+    end
   end
-
-  if (controls:jump()) self.ended = true
-
 end
 
 
@@ -955,12 +978,9 @@ end
 
 
 
-function graphics.background (hard)
+function graphics.background ()
 
-  hard = hard or false
-  --pal(6, 6)
-
-  if (not hard) then
+  if (not elvis.hard) then
     color(12)
     rectfill(cam.x - 84, cam.y + -20, cam.x + 128 + 20, cam.y + 188)
     return 1
@@ -1005,8 +1025,14 @@ guitar = {}
 
 function play_music ()
 
-  if elvis.playing() then
 
+  local disto = elvis.hard and poke(0x5f42, 0b0100) or poke(0x5f42, 0b0000)
+  poke(0x5f42, disto) --distort
+  poke(0x5f41, 0b0100) --echo
+  poke(0x5f43, 0b1111) --lowpass
+
+
+  if elvis.playing() then
     if (stat(18) == -1 or elvis.hard) then
       guitarpart = stat(16)+8
       sfx(guitarpart, 2, stat(20), hard)
@@ -1076,8 +1102,10 @@ function controls:special()
 
   -- add current control to the sequence if different
   if (self.sequence[#self.sequence] != self.direction()) then
-     add(self.sequence, self.direction())
+    add(self.sequence, self.direction())
   end
+
+
 
   --debug.log(tabletostr(self.sequence))
 end
@@ -1126,12 +1154,6 @@ end
   --   -- move
   --   self.x += vx;
   -- end
-
-
-
-
-
-
 
 
 
@@ -1355,8 +1377,8 @@ __gfx__
 0000000000000000000000000000000055555500666600060000000000000000000000000000000000000000000000000000000000000000ccccccdffdcccccc
 0000000000000000000000000000000055555506555500060000000000000000000000000000000000000000000000000000000000000000bccccc0d011ccccb
 0000000000000000000000000000000055555506555500000000000000000000000000000000000000000000000000000000000000000000bbccc0000011ccbb
-0000000000000000000000000000000000555006555500000000000000000000000000000000000000000000000000000000000000000000bbbc00000001cbbb
-0000000000000000000000000000000000000000555006660000000000000000000000000000000000000000000000000000000000000000bbbb00000001bbbb
+0000000000000000000000000000000000555006555500000000000000000000000000000000000000000000000000000000000000000000bbbc000000011bbb
+0000000000000000000000000000000000000000555006660000000000000000000000000000000000000000000000000000000000000000bbbb00000000bbbb
 0000000000000000000000000000000055000660000006550000000000000000000000000000000000000000000000000000000000000000bbbbb000000bbbbb
 cccccccccccccccccccccccccccccccccccccccc0ccccccccccccccccccccccccccccccccccccccccccccccc0cccccccccccccccccccccccccccccc0cccccccc
 cccccc00c0cccccccccccc00c0cccccccccccc00cccccccccccccccccccccccccccccccccc0ccccccccccc00ccccccccccccccccccccccccccccc00ccccccccc
