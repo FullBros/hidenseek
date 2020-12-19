@@ -24,7 +24,6 @@ function _init()
   elvis = hero:new({ x = 62, y = 104})
   rachel = dog:new({ x = elvis.x + 100, y = elvis.y+4})
 
-
   music(0) -- go music!
 end
 
@@ -36,14 +35,15 @@ function _update()
   tick = (tick + 1) % max_tick
   delay_shoot += 1
 
+
   if (not game.pause) then
-    game.level:update()
     elvis:update()
     for b in all (bullets) do b:update() end
     for a in all (aliens)  do a:update() end
     play_music()
   end
 
+  game.level:update()
   rachel:update()
 
 end
@@ -55,13 +55,11 @@ function _draw()
   cls()
   palt(0,false) -- use dark in sprites
 
-
   graphics.background(elvis.hard)
 
   palt(12, true) -- use cyan in map
   map(0,0,0,0,128,128)
   palt(12, true) -- but not for characters
-
 
   elvis:draw()
 
@@ -69,15 +67,11 @@ function _draw()
   for b in all (bullets) do b:draw() end
 
   rachel:draw()
-
   cam:update()
-  --print(elvis.x, cam.x, cam.y)
-
 
   graphics.infos()
   game.level:draw()
 
-  --debug.log(game.level.number)
   debug.show ()
 
   --graphics.dialog({"elvis, you good?", "i feel some kind of", "tension"})
@@ -207,6 +201,11 @@ function hero:new (object)
   return object
 end
 
+function hero:playing ()
+  return controls:ready() and
+        (controls:left() or controls:right() or controls:up() or controls:diagonal())
+end
+
 
 function hero:update()
 
@@ -260,6 +259,9 @@ function hero:update()
   if (btn(0)) elvis.flip = true
   if (btn(1)) elvis.flip = false
 
+
+  -- special moves
+  --self.hard = (self.animation == self.animations.up)
 end
 
 
@@ -281,7 +283,7 @@ dog.animations = {
 }
 
 dog.animation = dog.animations.idle
-dog.show = true
+dog.show = false
 
 
 function dog:new (object)
@@ -318,7 +320,7 @@ alien = {}
 alien.__index = alien
 setmetatable(alien, {__index = entity})
 
-alien.speed = .5
+alien.speed = .8
 alien._hit = false
 alien._die = false
 alien.countdown = 3
@@ -331,12 +333,29 @@ alien.animations = {
 alien.animation = alien.animations.fly
 
 
+function alien:new (direction, distance, object)
 
-
-function alien:new (object)
   object = object or {}
   setmetatable(object, self)
   self.__index = self
+
+  -- position
+  object.x = elvis.x
+  object.y = elvis.y
+
+  if (direction == 1) object.x -= distance
+  if (direction == 5) object.x += distance
+  if (direction == 3) object.y -= distance
+  if (direction == 2) then
+    object.x -= distance / sqrt(2)
+    object.y -= distance / sqrt(2)
+  end
+  if (direction == 4) then
+    object.x += distance / sqrt(2)
+    object.y -= distance / sqrt(2)
+  end
+
+  add(aliens, object)
   return object
 end
 
@@ -502,18 +521,12 @@ function bullet:draw ()
 end
 
 
-
-
-
-
-
 --
 -- levels
 --
 
 levels = {}
 level = {}
-level.__index = level
 --level.width =
 
 function level:new (object)
@@ -529,24 +542,6 @@ function level:new (object)
   return object
 end
 
-
-
-function level:create (n, limits, init, update, draw)
-
-  l = {}
-  setmetatable(l, level)
-
-  l.number = n
-  l.limits = limits
-  l.checkpoint = nil
-
-  -- functions
-  l.init = init
-  l.update = update
-  l.draw = draw
-
-  return l
-end
 
 function level:init() end
 function level:update() end
@@ -572,7 +567,6 @@ end
 -- levels & gameplay
 --
 
-
 --
 -- title screen
 --
@@ -588,7 +582,116 @@ end
 level0.draw = function (self)
   graphics.title()
   graphics.tip("rock this way ➡️", 0, 12)
+
 end
+
+
+--
+-- level 4 : special move
+--
+
+level4 = level:new()
+
+level4.init = function (self)
+  self.dialog = nil
+
+  local ennemies = {
+    {1, 100}, {1, 120}, {1, 140}, {1, 160}, {1, 180},
+    {2, 110}, {2, 130}, {2, 150}, {2, 170}, {2, 190},
+    {3, 120}, {3, 140}, {3, 160}, {3, 180}, {3, 200},
+    {4, 130}, {4, 150}, {4, 170}, {4, 190}, {4, 210},
+    {5, 140}, {5, 160}, {5, 180}, {5, 200}, {5, 200},
+  }
+
+  for e in all(ennemies) do
+    alien:new(e[1], e[2])
+  end
+
+  --elvis.animation = elvis.animations.idle
+  --game.pause = true
+end
+
+
+level4.update = function (self)
+
+  -- initalize step
+  self.step = self.step or 1
+
+  if (self.step == 1) then
+    -- check if aliens are close
+    for a in all(aliens) do
+      if (distance(elvis, a) < 40) then
+          self.step += 1
+          return
+        end
+    end
+  end
+
+  if (self.step == 2) then
+
+    elvis.animation = elvis.animations.ready
+    elvis.flip = false
+
+    -- stop music and movements
+    music(-1)
+    game.pause = true
+
+    rachel.animation = rachel.animations.running
+    rachel.x = elvis.x + 100
+    rachel.show = true
+
+    self.step += 1 -- only once
+    return
+  end
+
+  -- rachel comes in
+  if (self.step == 3) then
+    if (abs(rachel.x - elvis.x) < 20) self.step += 1
+  end
+
+  -- dialog
+  if (self.step == 4) then
+    self.dialog = dialog:new ("elvis, you good?\nyou look tense!", {speaker = 14})
+    self.step += 1
+    return
+  end
+
+  if (self.step == 5) then
+    if (self.dialog.ended) self.step += 1
+  end
+
+  -- dialog
+  if (self.step == 6) then
+    self.dialog = dialog:new ("...", {speaker = 46})
+    self.step += 1
+    return
+  end
+
+  if (self.step == 7) then
+   -- if (self.dialog.ended) self.step += 1
+  end
+
+  -- dialog
+  if (self.step == 8) then
+    self.dialog = dialog:new ("maybe i can help.", {speaker = 14})
+    self.step += 1
+    return
+  end
+
+  if (self.step == 9) then
+    if (self.dialog.ended) self.step += 1
+  end
+
+
+
+end
+
+
+level4.draw = function (self)
+  if (self.dialog != nil) self.dialog:draw()
+end
+
+
 
 
 
@@ -601,6 +704,7 @@ level1 = level:new()
 level1.init = function (self)
     self.tutorial = true
     self.message = ""
+    self.created = false
 end
 
 level1.update = function (self)
@@ -610,13 +714,20 @@ level1.update = function (self)
     if (elvis.animation == elvis.animations.ready) self.message = "...and use direction to aim"
   end
 
-  if (guitar.playing) then
-    self.message = "you got it, elvis! ➡️"
+  if (elvis.playing()) then
+    if (not self.created) alien:new(3, 110, {speed = .4})
+    self.message = ""
     self.tutorial = false
+    self.created = true
     game.infos = true
   end
 
-  if (not self.tutorial) self:next()
+  if (not self.tutorial and #aliens == 0) then
+    self:next()
+    self.message = "you got it, elvis! ➡️"
+  end
+
+
 end
 
 -- draw
@@ -625,146 +736,68 @@ level1.draw = function (self)
 end
 
 
+--
+-- level 2 : first aliens
+--
 
+level1 = level:new()
 
-add(levels, level:create(
-  2,
-  {256,384},
+level1.init = function (self)
+  self.message = ""
+  alien:new(1, 100)
+  alien:new(2, 110)
+  alien:new(3, 120)
+  alien:new(4, 130)
+  alien:new(5, 140)
+end
 
-  -- init
-  function (self)
-      self.message = ""
-
-      add(aliens, alien:create(elvis.x - 80, elvis.y + 4))
-      add(aliens, alien:create(elvis.x + 100, elvis.y + 4))
-      add(aliens, alien:create(elvis.x, -60))
-      add(aliens, alien:create(elvis.x -90,  -30))
-      add(aliens, alien:create(elvis.x +100, -40))
-  end,
-
-  -- update
-  function (self)
-    if (#aliens == 0) then
-      self:next()
-      self.message = "that was an easy one ➡️"
-    end
-  end,
-
-  -- draw
-  function (self)
-    graphics.tip(self.message, cam.x)
+level1.update = function (self)
+  if (#aliens == 0) then
+    self:next()
+    self.message = "that was an easy one ➡️"
   end
-))
+end
+
+level1.draw = function (self)
+  graphics.tip(self.message, cam.x)
+end
 
 
-add(levels, level:create(
-  3,
-  {384,512},
+--
+-- level 3 : more aliens
+--
 
-  -- init
-  function (self)
+level2 = level:new()
 
-      self.message = ""
+level2.init = function (self)
+  self.message = ""
 
-      add(aliens, alien:create(elvis.x - 80, elvis.y))
-      add(aliens, alien:create(elvis.x - 100, elvis.y))
-      add(aliens, alien:create(elvis.x + 90, elvis.y))
-      add(aliens, alien:create(elvis.x + 110, elvis.y))
-      add(aliens, alien:create(elvis.x, -60))
-      add(aliens, alien:create(elvis.x -80,  -20))
-      add(aliens, alien:create(elvis.x -90,  -30))
-      add(aliens, alien:create(elvis.x -110, -40))
-      add(aliens, alien:create(elvis.x +100, -40))
-  end,
+  alien:new(1, 100)
+  alien:new(2, 110)
+  alien:new(3, 120)
+  alien:new(4, 130)
+  alien:new(5, 140)
 
-  -- update
-  function (self)
-    if (#aliens == 0) then
-      self:next()
-      self.message = "well done! ➡️"
-    end
-  end,
+  alien:new(1, 130)
+  alien:new(2, 140)
+  alien:new(3, 150)
+  alien:new(4, 160)
+  alien:new(5, 170)
 
-  -- draw
-  function (self)
-    graphics.tip(self.message, cam.x)
+
   end
-))
 
-
-
-
-add(levels, level:create(
-  4,
-  {512,640},
-
-  -- init
-  function (self)
-
-    self.step = 0
-    self.steps = {
-      ennemies = 0,
-      animation = 1,
-      dialog = 2,
-    }
-
-    self.dialog = nil
-
-    local ennemies = {
-      {-100, 0}, {-110, 0}, {-120, 0}, {-130, 0}, {-140, 0},
-      {100, 0}, {110, 0}, {120, 0}, {130, 0}, {140, 0},
-      {0, -100}, {0, -110}, {0, -120}, {0, -130}, {0, -140},
-      {-90, -90}, {-95, -95}, {-100, -100}, {-105, -105}, {-110, -110},
-      {90, -90}, {95, -95}, {100, -100}, {105, -105}, {110, -110}
-    }
-
-    for e in all(ennemies) do
-      add(aliens, alien:create(elvis.x + e[1], elvis.y + e[2]))
-    end
-
-    --elvis.animation = elvis.animations.idle
-    --game.pause = true
-
-  end,
-
-
-  -- update
-  function (self)
-
-    for a in all(aliens) do
-      if (distance(elvis, a) < 40) then
-          self.step = self.steps.animation
-        end
-    end
-
-    if (self.step == self.steps.animation) then
-        elvis.animation = elvis.animations.ready
-        elvis.flip = false
-        game.pause = true
-        music(-1)
-        rachel.animation = rachel.animations.running
-        rachel.x = elvis.x + 100
-        rachel.show = true
-    end
-
-
-    if (self.step == self.steps.animation and abs(rachel.x - elvis.x) < 20) then
-      self.step = self.steps.dialog
-    end
-
-    if (self.step == self.steps.dialog) then
-      self.dialog = {"elvis, you good?", "look tense"}
-    end
-
-
-
-  end,
-
-  -- draw
-  function (self)
-    if (self.dialog != nil) graphics.dialog(self.dialog)
+level2.update = function (self)
+  if (#aliens == 0) then
+    self:next()
+    self.message = "well done! ➡️"
   end
-))
+end
+
+
+level2.draw = function (self)
+  graphics.tip(self.message, cam.x)
+end
 
 
 
@@ -777,20 +810,55 @@ add(levels, level:create(
 --
 
 dialog = {}
-dialog.__index = dialog
 
-function dialog:create ()
 
-  d = {}
-  setmetatable(d, dialog)
-  return d
+dialog.text = ""
+dialog.ended = false
+dialog.display = ""
+dialog.animate_each = 3
+dialog.speaker = 46 -- 14 / 46-- speaker sprite
+
+function dialog:new (text, object)
+  object = object or {}
+  setmetatable(object, self)
+  self.__index = self
+
+  self.text = text
+  self.ended = false
+
+  return object
 end
 
--- text or table (multiline)
-function dialog:add (text)
 
+function dialog:draw ()
+
+  local lines = count_lines(self.text)
+
+  local height = (lines + 1) * 7 + 8
+  rrectfill(cam.x + 5, cam.y + 5, cam.x + 128 - 5, cam.y + height + 5, 1, 3)
+  rrectfill(cam.x + 6, cam.y + 6, cam.x + 128 - 6, cam.y + height + 4, 7, 3)
+
+  palt(12, false)
+  palt(11, true)
+  spr(self.speaker, cam.x + 104, 10, 2, 2)
+
+  -- add a letter
+  if (tick % self.animate_each == 0) then
+    self.display = sub(self.text, 1, #self.display + 1)
+  end
+
+  print(self.display, cam.x + 10, cam.y + 10, 1)
+
+  if (#self.display == #self.text) then
+    print("press ❎", cam.x + 10, height - 4, 12)
+  end
+
+  if (controls:jump()) self.ended = true
 
 end
+
+
+
 
 
 ---
@@ -883,21 +951,7 @@ function graphics.tip (t, offx, offy)
 end
 
 
-function graphics.dialog (text)
 
-  text = (type(text) == "table") and text or {text}
-
-  local height = (#text + 1) * 9 + 8
-
-  rrectfill(cam.x + 5, cam.y + 5, cam.x + 128 - 5, cam.y + height + 5, 1, 3)
-  rrectfill(cam.x + 6, cam.y + 6, cam.x + 128 - 6, cam.y + height + 4, 7, 3)
-
-  for i, t in ipairs(text) do
-    print(text[i], cam.x + 10, cam.y + 5 + 5+(i-1)*9, 1)
-  end
-
-  print("press ❎", cam.x + 10, 4 + 9*(#text+1), 12)
-end
 
 
 
@@ -946,32 +1000,12 @@ sound.drums = {0,1}
 
 
 guitar = {}
-guitar.playing = false
+
 
 
 function play_music ()
 
-   local hard
-
-  if (elvis.animation == elvis.animations.right or
-      elvis.animation == elvis.animations.diagonal or
-      elvis.animation == elvis.animations.up
-    ) then
-
-    elvis.hard = (elvis.animation == elvis.animations.up)
-
-    --if (guitar.playing == false or hard == 1) then
-      -- guitarpart = stat(16)+8
-      -- sfx(guitarpart, 2, stat(20), hard)
-       guitar.playing = true
-    -- end
-  else
-    --sfx(-1, 2)
-    guitar.playing = false
-  end
-
-
-  if guitar.playing then
+  if elvis.playing() then
 
     if (stat(18) == -1 or elvis.hard) then
       guitarpart = stat(16)+8
@@ -1034,15 +1068,24 @@ function controls:ready()
   return btn(4)
 end
 
+function controls:jump()
+  return btn(5)
+end
+
 function controls:special()
 
   -- add current control to the sequence if different
-  if (self.sequence[#self.sequence] != self:direction()) then
-     add(self.sequence, self:direction())
+  if (self.sequence[#self.sequence] != self.direction()) then
+     add(self.sequence, self.direction())
   end
 
   --debug.log(tabletostr(self.sequence))
 end
+
+
+
+
+
 
 
 function tabletostr (table)
@@ -1242,6 +1285,18 @@ function polyfill(pts)
  end
 end
 
+function count_lines(text)
+
+  if (not #text) return false
+
+  lines = 1
+  for i= 1,#text do
+    if (sub(text, i, i) == "\n") lines+=1
+  end
+
+  return lines
+end
+
 -- round rectangle
 function rrectfill(x0, y0, x1, y1, col, radius)
   local radius = radius or 0
@@ -1271,38 +1326,38 @@ end
 
 
 __gfx__
-00000000cccccccc0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000cccccccc0e80e80000000000500005050000005000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00700700cccccccce88e888000000000550050505000005500000000000000000000000000000000000000000000000000000000000000000000000000000000
-00077000cccccccce888888000000000550055555000500000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00077000cccccccc0888880000000000000005555005550000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00700700cccccccc0088800000000000000055550005550000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000cccccccc0008000000000000666600000600000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000cccccccc0000000000000000555500665506650600000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000555550065506550600000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000110110000000000555555000000550600000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000900001111111000000000555555006666000600000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000009e90001111111000000000555555065555000600000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000900000111110000000000555555065555000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000011100000000000005550065555000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000001000000000000000000005550066600000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000550006600000065500000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000500005050000005000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000e0e0000000000000000000550050505000005500000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000900000000000000000000550055555000500000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000e0e0000000000000000000000005555005550000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000055550005550000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000666600000600000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000555500665506650600000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000555550065506550600000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000555555000000550600000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000555555006666000600000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000555555065555000600000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000555555065555000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000005550065555000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000005550066600000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000550006600000065500000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000cccccccc000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000bbbbbccccccbbbbb
+00000000cccccccc0e80e8000000000050000505000000500000000000000000000000000000000000000000000000000000000000000000bbbbccccccccbbbb
+00700700cccccccce88e88800009000055005050500000550000000000000000000000000000000000000000000000000000000000000000bbbccccccccccbbb
+00077000cccccccce8888880009e900055005555500050000000000000000000000000000000000000000000000000000000000000000000bbc5ccccccc5ccbb
+00077000cccccccc088888000009000000000555500555000000000000000000000000000000000000000000000000000000000000000000bc555c666c555ccb
+00700700cccccccc008880000000000000005555000555000000000000000000000000000000000000000000000000000000000000000000cc55666666655ccc
+00000000cccccccc000800000000000066660000060000000000000000000000000000000000000000000000000000000000000000000000ccc666666666cccc
+00000000cccccccc000000000000000055550066550665060000000000000000000000000000000000000000000000000000000000000000ccc607666076cccc
+0000000000000000000000000000000055555006550655060000000000000000000000000000000000000000000000000000000000000000ccc6006560066ccc
+0000000000090000011011000000000055555500000055060000000000000000000000000000000000000000000000000000000000000000cccc660006665ccc
+00000000000990001111111000e0e00055555500666600060000000000000000000000000000000000000000000000000000000000000000cccc655055656ccc
+0000000000090000111111100009000055555506555500060000000000000000000000000000000000000000000000000000000000000000bccccc5e566666cb
+00000000009900000111110000e0e00055555506555500000000000000000000000000000000000000000000000000000000000000000000bbcccc66666666bb
+0000000000990000001110000000000000555006555500000000000000000000000000000000000000000000000000000000000000000000bbbccc6666666bbb
+0000000000000000000100000000000000000000555006660000000000000000000000000000000000000000000000000000000000000000bbbbcc6c5666bbbb
+0000000000000000000000000000000055000660000006550000000000000000000000000000000000000000000000000000000000000000bbbbbc6c565bbbbb
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000bbbbbccccccbbbbb
+00000000000e0000000000000000000050000505000000500000000000000000000000000000000000000000000000000000000000000000bbbbccccccccbbbb
+00000000000ee000000000000000000055005050500000550000000000000000000000000000000000000000000000000000000000000000bbbcc01ccccccbbb
+00000000000e0000000000000000000055005555500050000000000000000000000000000000000000000000000000000000000000000000bbccc00011ccccbb
+0000000000ee0000000000000000000000000555500555000000000000000000000000000000000000000000000000000000000000000000bcccc000001ccccb
+0000000000ee0000000000000000000000005555000555000000000000000000000000000000000000000000000000000000000000000000ccccccffd011cccc
+0000000000000000000000000000000066660000060000000000000000000000000000000000000000000000000000000000000000000000ccccc0f0f001cccc
+0000000000000000000000000000000055550066550665060000000000000000000000000000000000000000000000000000000000000000cccccffff0f0cccc
+0000000000000000000000000000000055555006550655060000000000000000000000000000000000000000000000000000000000000000cccccffffff0cccc
+0000000000000000000000000000000055555500000055060000000000000000000000000000000000000000000000000000000000000000ccccccffffdccccc
+0000000000000000000000000000000055555500666600060000000000000000000000000000000000000000000000000000000000000000ccccccdffdcccccc
+0000000000000000000000000000000055555506555500060000000000000000000000000000000000000000000000000000000000000000bccccc0d011ccccb
+0000000000000000000000000000000055555506555500000000000000000000000000000000000000000000000000000000000000000000bbccc0000011ccbb
+0000000000000000000000000000000000555006555500000000000000000000000000000000000000000000000000000000000000000000bbbc00000001cbbb
+0000000000000000000000000000000000000000555006660000000000000000000000000000000000000000000000000000000000000000bbbb00000001bbbb
+0000000000000000000000000000000055000660000006550000000000000000000000000000000000000000000000000000000000000000bbbbb000000bbbbb
 cccccccccccccccccccccccccccccccccccccccc0ccccccccccccccccccccccccccccccccccccccccccccccc0cccccccccccccccccccccccccccccc0cccccccc
 cccccc00c0cccccccccccc00c0cccccccccccc00cccccccccccccccccccccccccccccccccc0ccccccccccc00ccccccccccccccccccccccccccccc00ccccccccc
 cccccc0f0ccccccccccccc0f0ccccccccccccc0f0ccccccccccccc0000cccccccccccccc00cccccccccccc0f0ccccccccccccc0000ccccccccccc0f0cccccccc
