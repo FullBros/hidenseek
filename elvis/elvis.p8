@@ -772,9 +772,9 @@ level4.update = function (self)
       {text = "elvis, you good?\nyou look tense!", character = dialog.characters.rachel},
       {text = "...", character = dialog.characters.elvis},
       {text = "let me help you", character = dialog.characters.rachel},
-      {text = "let's try this \n🅾️ + ⬆️⬆️⬇️⬇️⬅️➡️⬅️➡️\nto go beast mode", character = dialog.characters.rachel, mode = 1},
-      {text = "maybe you should write\n that down somewhere", character = dialog.characters.rachel},
-      {text = "ok let's go!", character = dialog.characters.rachel},
+      {text = "use this combo \n🅾️ + ⬆️⬆️⬇️⬇️⬅️➡️⬅️➡️\nto go hard mode", character = dialog.characters.rachel, mode = 1},
+      {text = "maybe you should write\nthat down somewhere...", character = dialog.characters.rachel},
+      {text = "ok be ready!", character = dialog.characters.rachel},
     })
     self.step += 1
     return
@@ -793,8 +793,8 @@ level4.update = function (self)
 
   if (self.step == 6) and (#aliens == 0) then
     elvis.hard = false
-    self:next()
-    self.message = "that was an wild ➡️"
+    --self:next()
+    self.message = "that was wild!!"
   end
 
 
@@ -804,7 +804,7 @@ end
 
 level4.draw = function (self)
   if (self.dialog != nil) self.dialog:draw()
-    graphics.tip(self.message, cam.x)
+  graphics.tip(self.message, cam.x)
 end
 
 
